@@ -1,1 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的 0050 定期定額與加碼策略筆記</title>
+    <!-- 引入 Tailwind CSS (樣式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Alpine.js (資料綁定與邏輯) -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- 引入 FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        // 設定 Tailwind 自訂顏色
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1e3a8a',
+                        secondary: '#3b82f6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隱藏數字輸入框的上下箭頭 */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen pb-10">
 
+    <!-- Alpine.js 應用程式起點 -->
+    <div x-data="investmentApp()" x-init="initApp()" x-cloak class="max-w-5xl mx-auto pt-8 px-4 sm:px-6">
+        
+        <!-- 標題區 -->
+        <header class="mb-8 flex justify-between items-end">
+            <div>
+                <h1 class="text-3xl font-bold text-primary flex items-center gap-3">
+                    <i class="fa-solid fa-chart-line"></i>
+                    0050 投資筆記 & 加碼雷達
+                </h1>
+                <p class="text-slate-500 mt-2">結合定期定額紀律與綜合評分指標的量化輔助系統</p>
+            </div>
+            <div class="text-right text-sm text-slate-500">
+                <button @click="fetchStockPrice()" class="hover:text-primary transition">
+                    <i class="fa-solid fa-rotate-right" :class="{'animate-spin': isFetching}"></i> 
+                    更新市價
+                </button>
+                <div class="mt-1">0050 目前市價: <span class="font-bold text-slate-700" x-text="currentPrice"></span> 元</div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- 左側/上方：資產總覽與設定 -->
+            <div class="lg:col-span-1 space-y-6">
+                
+                <!-- 區塊 1：我的資產總覽 -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2"><i class="fa-solid fa-wallet text-secondary mr-2"></i>我的資產總覽</h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">現有庫存 (股)</label>
+                            <input type="number" x-model.number="shares" @input="saveData" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">總投入成本 (元)</label>
+                            <input type="number" x-model.number="totalCost" @input="saveData" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                        </div>
+                    </div>
+
+                    <!-- 績效試算結果 -->
+                    <div class="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-xs text-slate-500">平均成本</div>
+                                <div class="text-lg font-bold" x-text="avgCost > 0 ? avgCost + ' 元' : '-'"></div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-slate-500">目前總市值</div>
+                                <div class="text-lg font-bold" x-text="marketValue > 0 ? formatMoney(marketValue) + ' 元' : '-'"></div>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-slate-200">
+                            <div class="text-xs text-slate-500">未實現損益 (報酬率)</div>
+                            <div class="text-2xl font-black mt-1 flex items-baseline gap-2" 
+                                 :class="roi >= 0 ? 'text-red-500' : 'text-green-500'"> <!-- 台灣股市紅漲綠跌 -->
+                                <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
+                                <span class="text-lg" x-text="roi !== null ? '(' + roi + '%)' : ''"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 區塊 2：定期定額設定 -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2"><i class="fa-solid fa-calendar-check text-secondary mr-2"></i>定期定額設定</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">預設每次扣款金額 (元)</label>
+                            <input type="number" x-model.number="baseAmount" @input="saveData" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 右側/下方：加碼雷達與指標設定 -->
+            <div class="lg:col-span-2 space-y-6">
+                
+                <!-- 核心：今日加碼雷達 -->
+                <div class="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden relative">
+                    <!-- 頂部顏色條 (依據分數變色) -->
+                    <div class="h-2 w-full" :class="suggestion.barColor"></div>
+                    
+                    <div class="p-8 flex flex-col md:flex-row items-center gap-8">
+                        <!-- 分數顯示 -->
+                        <div class="relative flex-shrink-0 flex flex-col items-center justify-center w-40 h-40 rounded-full border-8" :class="suggestion.borderColor">
+                            <div class="text-5xl font-black" :class="suggestion.textColor" x-text="totalScore"></div>
+                            <div class="text-sm font-bold text-slate-500 mt-1">/ 100 分</div>
+                        </div>
+                        
+                        <!-- 建議行動 -->
+                        <div class="flex-grow text-center md:text-left">
+                            <h3 class="text-slate-500 font-medium mb-1">系統綜合判定：</h3>
+                            <div class="text-3xl font-bold mb-3" :class="suggestion.textColor" x-text="suggestion.state"></div>
+                            <p class="text-slate-600 mb-4" x-text="suggestion.desc"></p>
+                            
+                            <div class="inline-block px-6 py-3 rounded-xl border-2" :class="suggestion.boxStyle">
+                                <span class="block text-sm font-bold mb-1">🎯 建議本次投入金額</span>
+                                <div class="text-2xl font-black flex items-center justify-center md:justify-start gap-2">
+                                    <span x-text="formatMoney(baseAmount) + ' (原定)'"></span>
+                                    <span x-show="suggestion.mult > 0" class="text-slate-400">+</span>
+                                    <span x-show="suggestion.mult > 0" x-text="formatMoney(baseAmount * suggestion.mult) + ' (加碼)'"></span>
+                                    <span class="text-slate-400">=</span>
+                                    <span class="text-3xl" x-text="formatMoney(baseAmount + (baseAmount * suggestion.mult))"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 區塊 3：市場狀態打分 (開關) -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <div class="flex justify-between items-center mb-6 border-b pb-2">
+                        <h2 class="text-xl font-bold text-slate-800"><i class="fa-solid fa-list-check text-secondary mr-2"></i>市場指標檢核 (手動勾選)</h2>
+                        <button @click="resetToggles()" class="text-sm text-slate-500 hover:text-red-500 underline">全部重置</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                        
+                        <!-- A. 技術面 -->
+                        <div class="col-span-1 md:col-span-2 text-sm font-bold text-slate-400 uppercase tracking-wider mt-2 mb-1">A. 技術面與趨勢 (最高 40 分)</div>
+                        
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" x-model="toggles.kdj" @change="saveData" class="w-5 h-5 text-secondary rounded focus:ring-secondary">
+                                <div>
+                                    <div class="font-bold text-slate-700">短線超跌 (KDJ)</div>
+                                    <div class="text-xs text-slate-500">當日 K 值 < 20</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-secondary">+10</span>
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" x-model="toggles.ma240" @change="saveData" class="w-5 h-5 text-secondary rounded focus:ring-secondary">
+                                <div>
+                                    <div class="font-bold text-slate-700">中線價值 (跌破年線)</div>
+                                    <div class="text-xs text-slate-500">收盤價 < MA240</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-secondary">+10</span>
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" x-model="toggles.ma120" @change="saveData" class="w-5 h-5 text-secondary rounded focus:ring-secondary">
+                                <div>
+                                    <div class="font-bold text-slate-700">長線極端 (跌破十年線)</div>
+                                    <div class="text-xs text-slate-500">收盤價 < MA120</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-secondary">+20</span>
+                        </label>
+
+                        <!-- B. 總經面 -->
+                        <div class="col-span-1 md:col-span-2 text-sm font-bold text-slate-400 uppercase tracking-wider mt-4 mb-1">B. 總體經濟與價值 (最高 35 分)</div>
+
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" x-model="toggles.blueLight" @change="saveData" class="w-5 h-5 text-secondary rounded focus:ring-secondary">
+                                <div>
+                                    <div class="font-bold text-slate-700">景氣低迷 (國發會)</div>
+                                    <div class="text-xs text-slate-500">最新景氣燈號為「藍燈」</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-secondary">+20</span>
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" x-model="toggles.pb" @change="saveData" class="w-5 h-5 text-secondary rounded focus:ring-secondary">
+                                <div>
+                                    <div class="font-bold text-slate-700">大盤低估 (P/B)</div>
+                                    <div class="text-xs text-slate-500">大盤股價淨值比 < 1.6 倍</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-secondary">+15</span>
+                        </label>
+
+                        <!-- C & D. 情緒與折價 -->
+                        <div class="col-span-1 md:col-span-2 text-sm font-bold text-slate-400 uppercase tracking-wider mt-4 mb-1">C & D. 情緒面與折價 (最高 25 分)</div>
+
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" x-model="toggles.margin" @change="saveData" class="w-5 h-5 text-secondary rounded focus:ring-secondary">
+                                <div>
+                                    <div class="font-bold text-slate-700">市場恐慌</div>
+                                    <div class="text-xs text-slate-500">融資大減 + 伴隨 K < 20</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-secondary">+10</span>
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition" :class="isPersonalLoss ? 'bg-green-50 border-green-200' : ''">
+                            <div class="flex items-center gap-3">
+                                <!-- 這個是自動判斷的，不讓使用者勾 -->
+                                <input type="checkbox" disabled :checked="isPersonalLoss" class="w-5 h-5 text-green-500 rounded bg-slate-100 cursor-not-allowed">
+                                <div>
+                                    <div class="font-bold text-slate-700 flex items-center gap-2">個人成本跌幅 (自動) <i class="fa-solid fa-robot text-slate-400 text-xs"></i></div>
+                                    <div class="text-xs text-slate-500">現價低於個人平均成本 10% 以上</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-green-600">+5</span>
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" x-model="toggles.discount" @change="saveData" class="w-5 h-5 text-secondary rounded focus:ring-secondary">
+                                <div>
+                                    <div class="font-bold text-slate-700">ETF 淨值折價</div>
+                                    <div class="text-xs text-slate-500">0050 當日市價 < 預估淨值</div>
+                                </div>
+                            </div>
+                            <span class="font-bold text-secondary">+10</span>
+                        </label>
+
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 底部：TradingView 圖表區塊 -->
+            <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mt-2 mb-10">
+                <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2"><i class="fa-solid fa-chart-area text-secondary mr-2"></i>0050 走勢與技術指標檢視</h2>
+                <p class="text-sm text-slate-500 mb-4">你可以直接在這裡查看 KD 指標、均線（MA）等技術訊號，確認後再到上方勾選。</p>
+                <!-- TradingView Widget BEGIN -->
+                <div class="tradingview-widget-container" style="height: 500px; width: 100%;">
+                    <div id="tradingview_0050" style="height: 100%; width: 100%;"></div>
+                </div>
+                <!-- TradingView Widget END -->
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        function investmentApp() {
+            return {
+                // 基本資料
+                shares: 0,
+                totalCost: 0,
+                baseAmount: 10000,
+                
+                // 市場資料
+                currentPrice: 0,
+                isFetching: false,
+
+                // 手動指標開關
+                toggles: {
+                    kdj: false,
+                    ma240: false,
+                    ma120: false,
+                    blueLight: false,
+                    pb: false,
+                    margin: false,
+                    discount: false
+                },
+
+                // 程式初始化
+                initApp() {
+                    this.loadData();
+                    this.fetchStockPrice();
+                    this.initTradingView();
+                },
+
+                // 取得台灣證交所 0050 即時/收盤價
+                async fetchStockPrice() {
+                    if (this.isFetching) return;
+                    this.isFetching = true;
+                    try {
+                        // 使用 TWSE OpenAPI 抓取所有股票當日行情
+                        const response = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
+                        const data = await response.json();
+                        
+                        // 尋找 0050
+                        const stock0050 = data.find(stock => stock.Code === '0050');
+                        if (stock0050 && stock0050.ClosingPrice) {
+                            this.currentPrice = parseFloat(stock0050.ClosingPrice);
+                        } else {
+                            console.warn("無法從公開資料找到 0050 報價");
+                        }
+                    } catch (error) {
+                        console.error("抓取股價失敗", error);
+                        // 若抓取失敗，可提示使用者或維持預設
+                    } finally {
+                        this.isFetching = false;
+                    }
+                },
+
+                // 載入 TradingView 圖表
+                initTradingView() {
+                    // 動態載入腳本以防阻塞畫面
+                    const script = document.createElement('script');
+                    script.src = 'https://s3.tradingview.com/tv.js';
+                    script.async = true;
+                    script.onload = () => {
+                        new TradingView.widget({
+                            "autosize": true,
+                            "symbol": "TWSE:0050",
+                            "interval": "D",
+                            "timezone": "Asia/Taipei",
+                            "theme": "light",
+                            "style": "1",
+                            "locale": "zh_TW",
+                            "enable_publishing": false,
+                            "backgroundColor": "rgba(255, 255, 255, 1)",
+                            "gridColor": "rgba(240, 243, 250, 0)",
+                            "hide_top_toolbar": false,
+                            "hide_legend": false,
+                            "save_image": false,
+                            "container_id": "tradingview_0050",
+                            // 預設加上 KDJ 指標和兩條均線(可自行在圖表上調整參數)
+                            "studies": [
+                                "StochasticRSI@tv-basicstudies",
+                                "MASimple@tv-basicstudies",
+                                "MASimple@tv-basicstudies"
+                            ]
+                        });
+                    };
+                    document.body.appendChild(script);
+                },
+
+                // === 計算屬性區塊 ===
+
+                // 平均成本
+                get avgCost() {
+                    if (this.shares <= 0 || this.totalCost <= 0) return 0;
+                    return (this.totalCost / this.shares).toFixed(2);
+                },
+
+                // 總市值
+                get marketValue() {
+                    if (this.currentPrice <= 0) return 0;
+                    return (this.shares * this.currentPrice).toFixed(0);
+                },
+
+                // 未實現損益金額
+                get profit() {
+                    return (this.marketValue - this.totalCost).toFixed(0);
+                },
+
+                // 報酬率 (%)
+                get roi() {
+                    if (this.totalCost <= 0 || this.marketValue <= 0) return null;
+                    return (((this.marketValue - this.totalCost) / this.totalCost) * 100).toFixed(2);
+                },
+
+                // 自動判斷：個人跌幅是否超過 10%
+                get isPersonalLoss() {
+                    if (this.avgCost <= 0 || this.currentPrice <= 0) return false;
+                    return this.currentPrice <= (this.avgCost * 0.9);
+                },
+
+                // 計算總分
+                get totalScore() {
+                    let s = 0;
+                    if (this.toggles.kdj) s += 10;
+                    if (this.toggles.ma240) s += 10;
+                    if (this.toggles.ma120) s += 20;
+                    if (this.toggles.blueLight) s += 20;
+                    if (this.toggles.pb) s += 15;
+                    if (this.toggles.margin) s += 10;
+                    if (this.toggles.discount) s += 10;
+                    if (this.isPersonalLoss) s += 5;
+                    return s;
+                },
+
+                // 根據總分給出加碼建議與 UI 樣式
+                get suggestion() {
+                    const s = this.totalScore;
+                    if (s < 20) {
+                        return { 
+                            state: '🟢 正常運行區', 
+                            desc: '目前市場無明顯低估訊號，請保持紀律，維持原設定額度扣款即可。', 
+                            mult: 0,
+                            barColor: 'bg-green-500', borderColor: 'border-green-100', textColor: 'text-green-600', boxStyle: 'bg-green-50 border-green-200 text-green-800'
+                        };
+                    } else if (s < 40) {
+                        return { 
+                            state: '🟡 逢低佈局區', 
+                            desc: '出現短線超跌或折價，可運用小額資金進行試探性加碼。', 
+                            mult: 0.5,
+                            barColor: 'bg-yellow-400', borderColor: 'border-yellow-100', textColor: 'text-yellow-600', boxStyle: 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                        };
+                    } else if (s < 60) {
+                        return { 
+                            state: '🟠 價值浮現區', 
+                            desc: '跌破年線或大盤估值偏低，具備中長線投資價值，建議標準加碼。', 
+                            mult: 1.0,
+                            barColor: 'bg-orange-500', borderColor: 'border-orange-100', textColor: 'text-orange-600', boxStyle: 'bg-orange-50 border-orange-200 text-orange-800'
+                        };
+                    } else if (s < 80) {
+                        return { 
+                            state: '🔴 恐慌超跌區', 
+                            desc: '多項空頭與恐慌指標同時觸發，市場極度悲觀，是放大本金的絕佳時機！', 
+                            mult: 2.0,
+                            barColor: 'bg-red-500', borderColor: 'border-red-100', textColor: 'text-red-600', boxStyle: 'bg-red-50 border-red-200 text-red-800'
+                        };
+                    } else {
+                        return { 
+                            state: '🟣 歷史重壓區', 
+                            desc: '十年線疊加藍燈，屬於數年一遇的千載難逢機會，請勇敢重壓大舉買進！', 
+                            mult: 3.0,
+                            barColor: 'bg-purple-600', borderColor: 'border-purple-100', textColor: 'text-purple-600', boxStyle: 'bg-purple-50 border-purple-200 text-purple-800'
+                        };
+                    }
+                },
+
+                // === 輔助方法 ===
+
+                // 格式化金錢顯示 (加上千分位)
+                formatMoney(num) {
+                    return Number(num).toLocaleString('zh-TW');
+                },
+
+                // 全部重置開關
+                resetToggles() {
+                    for (let key in this.toggles) {
+                        this.toggles[key] = false;
+                    }
+                    this.saveData();
+                },
+
+                // 儲存資料到瀏覽器的 LocalStorage
+                saveData() {
+                    const dataToSave = {
+                        shares: this.shares,
+                        totalCost: this.totalCost,
+                        baseAmount: this.baseAmount,
+                        toggles: this.toggles
+                    };
+                    localStorage.setItem('THH0050_Data', JSON.stringify(dataToSave));
+                },
+
+                // 從瀏覽器載入資料
+                loadData() {
+                    const saved = localStorage.getItem('THH0050_Data');
+                    if (saved) {
+                        try {
+                            const parsed = JSON.parse(saved);
+                            this.shares = parsed.shares || 0;
+                            this.totalCost = parsed.totalCost || 0;
+                            this.baseAmount = parsed.baseAmount || 10000;
+                            if (parsed.toggles) {
+                                this.toggles = { ...this.toggles, ...parsed.toggles };
+                            }
+                        } catch (e) {
+                            console.error("載入存檔失敗", e);
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
