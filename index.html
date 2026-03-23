@@ -3,16 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的 0050 定期定額與加碼策略筆記</title>
+    <title>0050 定期定額與加碼策略系統</title>
+    
+    <!-- PWA 與 APP 安裝設定 -->
+    <meta name="theme-color" content="#1e3a8a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="0050 雷達">
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzFlM2E4YSIvPjx0ZXh0IHg9IjUwIiB5PSI2NCIgZm9udC1zaXplPSI0MCIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+NTwvdGV4dD48L3N2Zz4=">
+    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%20%E6%8A%95%E8%B3%87%E9%9B%B7%E9%81%94%22%2C%22short_name%22%3A%220050%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzFlM2E4YSIvPjx0ZXh0IHg9IjUwIiB5PSI2NCIgZm9udC1zaXplPSI0MCIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSI%2BNTwvdGV4dD48L3N2Zz4%3D%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%2C%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzFlM2E4YSIvPjx0ZXh0IHg9IjUwIiB5PSI2NCIgZm9udC1zaXplPSI0MCIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSI%2BNTwvdGV4dD48L3N2Zz4%3D%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+
+    <!-- 引入 Tailwind CSS 與設定 -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // 加上 typeof 與 try-catch 雙重防護，避免因網路延遲導致 tailwind 未定義時發生崩潰
+        try {
+            if (typeof tailwind !== 'undefined') {
+                tailwind.config = {
+                    theme: { extend: { colors: { primary: '#1e3a8a', secondary: '#3b82f6', background: '#f8fafc' } } }
+                }
+            }
+        } catch (e) {
+            console.warn("Tailwind 設定載入延遲", e);
+        }
+    </script>
     
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- 引入 FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <!-- 自訂樣式 -->
+    <style>
+        input[type="text"], input[type="number"], input[type="date"] { font-size: 16px; }
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        /* x-cloak 會在 Alpine 初始化完成後自動移除，防止畫面閃爍 */
+        [x-cloak] { display: none !important; }
+        .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
+    </style>
+
+    <!-- 確保 Alpine.js 元件在核心載入前註冊完成 -->
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('investmentApp', () => ({
                 // === 頁面導航 ===
-                activeTab: 'dashboard', // 'dashboard' 或是 'settings'
+                activeTab: 'dashboard', // 'dashboard' (主控台) 或是 'settings' (設定)
 
                 // === 基本資料 (設定頁) ===
                 shares: 0,
@@ -20,14 +54,29 @@
                 baseAmount: 10000,
                 investmentDates: '15', 
                 startDate: '', // 計畫起始日
-                lastCheckDate: null,  
+                lastCheckDate: null,
+                lastRemindedMonth: null, // 記錄上次提醒修改庫存的月份
                 
-                // === 市場資料 ===
+                // === 市場資料與計算 ===
                 currentPrice: 0,
                 isFetching: false,
-                calc_k: 50,
+                historicalDataLoaded: false,
+                calc_k: 0,
                 calc_ma120: 0,
                 calc_ma240: 0,
+                
+                // === 進階基本面與籌碼資料 ===
+                pbRatio: null,
+                vix: null,
+
+                // === 扣款與提醒日誌 ===
+                showLogs: false,
+                newLogs: [],
+                showUpdateReminder: false,
+
+                // === APP 安裝 ===
+                deferredPrompt: null,
+                showInstallBtn: false,
 
                 // 程式初始化
                 init() {
@@ -36,9 +85,19 @@
                         this.lastCheckDate = new Date().getTime();
                         this.saveData();
                     }
-                    this.fetchCurrentPrice();
+                    
+                    this.fetchDataAndProcess().then(() => {
+                        this.checkReminder();
+                    });
 
-                    // 監聽基本資料變動，隨時存檔
+                    // 攔截 PWA 安裝提示
+                    window.addEventListener('beforeinstallprompt', (e) => {
+                        e.preventDefault();
+                        this.deferredPrompt = e;
+                        this.showInstallBtn = true;
+                    });
+
+                    // 監聽變動，隨時存檔
                     this.$watch('shares', () => this.saveData());
                     this.$watch('avgCost', () => this.saveData());
                     this.$watch('baseAmount', () => this.saveData());
@@ -46,10 +105,155 @@
                     this.$watch('startDate', () => this.saveData());
                 },
 
-                // 取得台灣證交所最新股價 (確保首頁永遠有最新價格)
-                async fetchCurrentPrice() {
+                // 檢查是否需要提醒對帳 (超過本月最後一個扣款日)
+                checkReminder() {
+                    if (!this.investmentDates) return;
+                    
+                    // 取得設定的所有扣款日，找出最後一天
+                    const days = this.investmentDates.split(',')
+                                    .map(d => parseInt(d.trim()))
+                                    .filter(d => !isNaN(d) && d >= 1 && d <= 31);
+                    if (days.length === 0) return;
+                    
+                    const maxDay = Math.max(...days);
+                    const today = new Date();
+                    const currentMonthKey = `${today.getFullYear()}-${today.getMonth()}`;
+                    
+                    // 如果今天日期 > 本月最後扣款日，且這個月還沒提醒過
+                    if (today.getDate() > maxDay && this.lastRemindedMonth !== currentMonthKey) {
+                        this.showUpdateReminder = true;
+                    }
+                },
+
+                // 關閉對帳提醒並記錄
+                dismissReminder() {
+                    const today = new Date();
+                    this.lastRemindedMonth = `${today.getFullYear()}-${today.getMonth()}`;
+                    this.showUpdateReminder = false;
+                    this.saveData();
+                },
+
+                // 處理 APP 安裝
+                async installApp() {
+                    if (this.deferredPrompt) {
+                        this.deferredPrompt.prompt();
+                        const { outcome } = await this.deferredPrompt.userChoice;
+                        if (outcome === 'accepted') {
+                            this.showInstallBtn = false;
+                        }
+                        this.deferredPrompt = null;
+                    } else {
+                        alert("您的裝置或瀏覽器目前不支援自動安裝，或是您已經安裝過了。\niOS 用戶請點擊瀏覽器分享按鈕後，選擇「加入主畫面」。");
+                    }
+                },
+
+                // 核心：取得歷史資料、計算指標並處理自動扣款
+                async fetchDataAndProcess() {
                     if (this.isFetching) return;
                     this.isFetching = true;
+                    
+                    let historicalData = [];
+
+                    // 方案 1: FinMind API (專為台股設計，穩定度極高)
+                    try {
+                        const d = new Date();
+                        d.setFullYear(d.getFullYear() - 2); // 抓兩年資料
+                        const startDate = d.toISOString().split('T')[0];
+                        const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDate}`;
+                        
+                        const response = await fetch(finmindUrl);
+                        const json = await response.json();
+                        
+                        if (json.msg === 'success' && json.data && json.data.length > 0) {
+                            historicalData = json.data.map(item => ({
+                                time: new Date(item.date).getTime(),
+                                close: item.close,
+                                high: item.max,
+                                low: item.min
+                            }));
+                        }
+                    } catch (e) {
+                        console.warn("FinMind API 失敗，切換備援方案...", e);
+                    }
+
+                    // 方案 2: Yahoo Finance 備援 (若 FinMind 意外失效)
+                    if (historicalData.length === 0) {
+                        try {
+                            const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=2y&interval=1d';
+                            const proxies = [
+                                'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
+                                'https://corsproxy.io/?' + encodeURIComponent(yfUrl)
+                            ];
+
+                            for (let proxy of proxies) {
+                                try {
+                                    const response = await fetch(proxy);
+                                    if (response.ok) {
+                                        const data = await response.json();
+                                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                                            const result = data.chart.result[0];
+                                            const timestamps = result.timestamp;
+                                            const quotes = result.indicators.quote[0];
+
+                                            for(let i = 0; i < timestamps.length; i++) {
+                                                if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
+                                                    historicalData.push({
+                                                        time: timestamps[i] * 1000,
+                                                        close: quotes.close[i],
+                                                        high: quotes.high[i],
+                                                        low: quotes.low[i]
+                                                    });
+                                                }
+                                            }
+                                            break; 
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn("切換備援代理伺服器...");
+                                }
+                            }
+                        } catch (error) {
+                            console.warn("Yahoo API 備援抓取失敗", error);
+                        }
+                    }
+
+                    // 抓取股價淨值比 (P/B)
+                    try {
+                        const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
+                        if(pbRes.ok) {
+                            const pbData = await pbRes.json();
+                            const stock0050 = pbData.find(s => s.Code === '0050');
+                            if (stock0050) this.pbRatio = parseFloat(stock0050.PBratio).toFixed(2);
+                        }
+                    } catch(e) { console.warn("P/B API 抓取失敗"); }
+
+                    // 抓取 VIX 恐慌指數
+                    try {
+                        const vixUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/^VIX?range=1d&interval=1d';
+                        const proxy = 'https://api.allorigins.win/raw?url=';
+                        const vixRes = await fetch(proxy + encodeURIComponent(vixUrl));
+                        if(vixRes.ok) {
+                            const vixData = await vixRes.json();
+                            this.vix = parseFloat(vixData.chart.result[0].meta.regularMarketPrice).toFixed(2);
+                        }
+                    } catch(e) { console.warn("VIX API 抓取失敗"); }
+
+                    // 處理抓到的資料
+                    if (historicalData.length > 0) {
+                        this.historicalDataLoaded = true;
+                        this.calculateIndicators(historicalData);
+                        this.processAutoDeduct(historicalData);
+                    } else {
+                        // 方案 3: 若歷史資料全掛，至少試著從證交所抓取今日最新股價
+                        console.warn("歷史資料無法載入，回退至 TWSE 即時股價");
+                        await this.fetchCurrentPrice();
+                    }
+
+                    this.isFetching = false;
+                },
+
+                // 備用：取得台灣證交所最新單日股價
+                async fetchCurrentPrice() {
                     try {
                         const twseResponse = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
                         if (twseResponse.ok) {
@@ -60,35 +264,124 @@
                             }
                         }
                     } catch (error) {
-                        console.error("抓取股價失敗", error);
-                    } finally {
-                        this.isFetching = false;
+                        console.error("備用股價抓取失敗", error);
                     }
                 },
 
+                // 計算動態技術指標
+                calculateIndicators(data) {
+                    const len = data.length;
+                    this.currentPrice = parseFloat(data[len - 1].close.toFixed(2));
+
+                    if (len >= 120) {
+                        let sum = 0;
+                        for(let i = len - 120; i < len; i++) sum += data[i].close;
+                        this.calc_ma120 = sum / 120;
+                    }
+                    if (len >= 240) {
+                        let sum = 0;
+                        for(let i = len - 240; i < len; i++) sum += data[i].close;
+                        this.calc_ma240 = sum / 240;
+                    }
+
+                    let k = 50, d = 50;
+                    for (let i = 8; i < len; i++) {
+                        let highest = -Infinity, lowest = Infinity;
+                        for (let j = Math.max(0, i - 8); j <= i; j++) {
+                            if (data[j].high > highest) highest = data[j].high;
+                            if (data[j].low < lowest) lowest = data[j].low;
+                        }
+                        let rsv = highest === lowest ? 50 : ((data[i].close - lowest) / (highest - lowest)) * 100;
+                        k = (2/3) * k + (1/3) * rsv;
+                        d = (2/3) * d + (1/3) * k;
+                    }
+                    this.calc_k = k;
+                },
+
+                // 自動扣款邏輯
+                processAutoDeduct(historicalData) {
+                    if (!this.lastCheckDate || !this.investmentDates || this.baseAmount <= 0) return;
+
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    
+                    let lastCheck = new Date(this.lastCheckDate);
+                    lastCheck.setHours(0,0,0,0);
+
+                    if (lastCheck.getTime() >= today.getTime()) return;
+
+                    const deductDays = this.investmentDates.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 1 && d <= 31);
+                    if (deductDays.length === 0) return;
+
+                    let logs = [];
+                    let currentDate = new Date(lastCheck);
+                    currentDate.setDate(currentDate.getDate() + 1);
+
+                    let planStart = this.startDate ? new Date(this.startDate) : new Date(0);
+                    planStart.setHours(0,0,0,0);
+
+                    let addedSharesTotal = 0;
+                    let addedCostTotal = 0;
+
+                    while (currentDate <= today) {
+                        if (currentDate >= planStart && deductDays.includes(currentDate.getDate())) {
+                            
+                            const targetTime = currentDate.getTime();
+                            let executedPrice = this.currentPrice;
+                            let executedTime = currentDate;
+
+                            // 往後尋找最近的一個交易日 (例如目標日是週六，則找到週一)
+                            for (let i = 0; i < historicalData.length; i++) {
+                                if (historicalData[i].time >= targetTime) {
+                                    executedPrice = historicalData[i].close;
+                                    executedTime = new Date(historicalData[i].time);
+                                    break;
+                                }
+                            }
+
+                            const sharesBought = Math.floor(this.baseAmount / executedPrice);
+                            const actualCost = sharesBought * executedPrice;
+
+                            addedSharesTotal += sharesBought;
+                            addedCostTotal += actualCost;
+
+                            let dateStr = currentDate.toLocaleDateString();
+                            // 如果實際扣款日與預定扣款日不同，加上順延提示
+                            if (executedTime.getTime() !== currentDate.getTime()) {
+                                dateStr = `${dateStr} (順延至 ${executedTime.toLocaleDateString()})`;
+                            }
+
+                            logs.push(`📅 ${dateStr}：歷史收盤價 ${executedPrice.toFixed(2)} 元，概估買入 ${sharesBought} 股 (實扣 ${actualCost.toFixed(0)} 元)`);
+                        }
+                        currentDate.setDate(currentDate.getDate() + 1);
+                    }
+
+                    if (logs.length > 0) {
+                        let currentTotalCost = this.shares * this.avgCost;
+                        let newTotalCost = currentTotalCost + addedCostTotal;
+                        
+                        this.shares += addedSharesTotal;
+                        if (this.shares > 0) {
+                            this.avgCost = parseFloat((newTotalCost / this.shares).toFixed(2));
+                        }
+                        
+                        this.newLogs = logs;
+                        this.showLogs = true;
+                    }
+
+                    this.lastCheckDate = new Date().getTime();
+                    this.saveData();
+                },
+
                 // === 計算屬性 ===
-                get totalCost() {
-                    return this.shares * this.avgCost;
-                },
+                get totalCost() { return this.shares * this.avgCost; },
+                get marketValue() { return this.currentPrice <= 0 ? 0 : (this.shares * this.currentPrice).toFixed(0); },
+                get profit() { return (this.marketValue - this.totalCost).toFixed(0); },
+                get roi() { return (this.totalCost <= 0 || this.marketValue <= 0) ? null : (((this.marketValue - this.totalCost) / this.totalCost) * 100).toFixed(2); },
 
-                get marketValue() {
-                    if (this.currentPrice <= 0) return 0;
-                    return (this.shares * this.currentPrice).toFixed(0);
-                },
-
-                get profit() {
-                    return (this.marketValue - this.totalCost).toFixed(0);
-                },
-
-                get roi() {
-                    if (this.totalCost <= 0 || this.marketValue <= 0) return null;
-                    return (((this.marketValue - this.totalCost) / this.totalCost) * 100).toFixed(2);
-                },
-
-                // 格式化數字
                 formatMoney(num) {
                     if (isNaN(num) || num === null) return '0';
-                    return Number(num).toLocaleString('zh-TW');
+                    return Number(num).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
                 },
 
                 saveData() {
@@ -98,13 +391,14 @@
                         baseAmount: this.baseAmount,
                         investmentDates: this.investmentDates,
                         startDate: this.startDate,
-                        lastCheckDate: this.lastCheckDate
+                        lastCheckDate: this.lastCheckDate,
+                        lastRemindedMonth: this.lastRemindedMonth
                     };
-                    localStorage.setItem('THH0050_Data_V2', JSON.stringify(dataToSave));
+                    localStorage.setItem('THH0050_Data_V3', JSON.stringify(dataToSave));
                 },
 
                 loadData() {
-                    const saved = localStorage.getItem('THH0050_Data_V2');
+                    const saved = localStorage.getItem('THH0050_Data_V3');
                     if (saved) {
                         try {
                             const parsed = JSON.parse(saved);
@@ -114,46 +408,55 @@
                             this.investmentDates = parsed.investmentDates || '15';
                             this.startDate = parsed.startDate || '';
                             this.lastCheckDate = parsed.lastCheckDate || null;
+                            this.lastRemindedMonth = parsed.lastRemindedMonth || null;
                         } catch (e) {}
                     }
                 }
             }));
         });
     </script>
-
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <script>
-        tailwind.config = {
-            theme: { extend: { colors: { primary: '#1e3a8a', secondary: '#3b82f6', background: '#f8fafc' } } }
-        }
-    </script>
-    <style>
-        input[type="text"], input[type="number"], input[type="date"] { font-size: 16px; }
-        input[type=number]::-webkit-inner-spin-button, 
-        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        [x-cloak] { display: none !important; }
-        .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
-    </style>
+    <!-- 引入 Alpine.js (必須加 defer，這是解決畫面空白的關鍵) -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
 </head>
 <body class="bg-background text-slate-800 font-sans antialiased min-h-screen pb-20">
 
+    <!-- 加上 x-data 初始化應用程式，並用 x-cloak 隱藏直到準備完成 -->
     <div x-data="investmentApp" x-cloak class="max-w-4xl mx-auto pt-6 px-4 sm:px-6">
         
+        <!-- 自動扣款提醒彈窗 -->
+        <div x-show="showLogs" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" x-transition x-cloak>
+            <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+                <div class="flex items-center gap-3 text-green-600 mb-4">
+                    <i class="fa-solid fa-circle-check text-2xl"></i>
+                    <h3 class="text-xl font-bold">自動扣款紀錄已更新</h3>
+                </div>
+                <p class="text-sm text-slate-600 mb-4">系統偵測到自您上次開啟後，已過設定的扣款日，已自動為您加總概估庫存：</p>
+                <div class="bg-slate-50 p-3 rounded-lg text-sm space-y-2 mb-6 max-h-40 overflow-y-auto border border-slate-200">
+                    <template x-for="log in newLogs">
+                        <div x-text="log" class="text-slate-700"></div>
+                    </template>
+                </div>
+                <button @click="showLogs = false" class="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition">我知道了</button>
+            </div>
+        </div>
+
         <header class="mb-6">
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-4">
                 <div>
-                    <h1 class="text-2xl sm:text-3xl font-black text-primary flex items-center gap-2">
-                        <i class="fa-solid fa-layer-group"></i>
-                        0050 投資與加碼雷達
+                    <h1 class="text-2xl sm:text-3xl font-black text-primary flex flex-wrap items-baseline gap-2">
+                        <span><i class="fa-solid fa-layer-group"></i> 0050 投資與加碼雷達</span>
+                        <span class="text-xs sm:text-sm font-normal text-slate-400">蔡宏和製作20260323</span>
                     </h1>
                     <p class="text-sm text-slate-500 mt-1">深度市場洞察與自動化記帳系統</p>
                 </div>
                 <div class="text-right">
                     <div class="text-sm text-slate-500">0050 最新市價</div>
-                    <div class="text-2xl font-black text-slate-800">
-                        <span x-text="currentPrice > 0 ? currentPrice : '讀取中...'"></span>
-                        <span x-show="currentPrice > 0" class="text-base font-normal">元</span>
+                    <div class="text-2xl font-black text-slate-800 flex items-center justify-end gap-2">
+                        <span x-show="isFetching" class="text-sm text-slate-400"><i class="fa-solid fa-rotate-right animate-spin"></i> 抓取中...</span>
+                        <span x-show="!isFetching" x-text="currentPrice > 0 ? currentPrice : '無法取得'"></span>
+                        <span x-show="!isFetching && currentPrice > 0" class="text-base font-normal">元</span>
                     </div>
                 </div>
             </div>
@@ -165,27 +468,54 @@
                 <button @click="activeTab = 'settings'" class="tab-btn px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'settings'}">
                     <i class="fa-solid fa-gear mr-2"></i>系統設定
                 </button>
+                <div class="ml-auto flex items-center pr-2">
+                    <button x-show="showInstallBtn" @click="installApp" class="hidden sm:inline-flex items-center justify-center px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak>
+                        <i class="fa-solid fa-download mr-2"></i>安裝 APP
+                    </button>
+                </div>
             </div>
+            <!-- 手機版獨立顯示安裝按鈕 -->
+            <button x-show="showInstallBtn" @click="installApp" class="w-full mt-3 sm:hidden inline-flex items-center justify-center px-4 py-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak>
+                <i class="fa-solid fa-download mr-2"></i>安裝 APP 至手機桌面
+            </button>
         </header>
 
+        <!-- ==================== 主控台與報告頁面 ==================== -->
         <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
             
+            <!-- 月底對帳提醒橫幅 (當超過本月最後扣款日且尚未點擊確認時顯示) -->
+            <div x-show="showUpdateReminder" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-xl shadow-sm relative" x-cloak x-transition>
+                <div class="flex items-start">
+                    <i class="fa-solid fa-bell text-yellow-500 text-xl mt-1 mr-3"></i>
+                    <div class="flex-1">
+                        <h3 class="text-sm font-bold text-yellow-800">溫馨提醒：本月扣款已全數完成</h3>
+                        <p class="text-sm text-yellow-700 mt-1 pr-6 leading-relaxed">
+                            目前系統為自動運算之概估值，與券商實際交易手續費可能有些許誤差。<br>
+                            建議您現在登入券商軟體對帳，並前往「<button @click="activeTab = 'settings'; dismissReminder();" class="underline font-bold text-yellow-800 hover:text-yellow-600">系統設定</button>」微調您的「現有庫存股數」與「平均成本」，以保持計算的精準度！
+                        </p>
+                    </div>
+                    <button @click="dismissReminder()" class="text-yellow-500 hover:text-yellow-700 p-1 absolute top-3 right-3">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">現有庫存 (股)</div>
+                        <div class="text-xs font-medium text-slate-500 mb-1">現有庫存 (股) <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
                         <div class="text-xl font-bold text-slate-800" x-text="shares > 0 ? formatMoney(shares) : '-'"></div>
                     </div>
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">平均成本 (元)</div>
+                        <div class="text-xs font-medium text-slate-500 mb-1">平均成本 (元) <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
                         <div class="text-xl font-bold text-slate-800" x-text="avgCost > 0 ? avgCost : '-'"></div>
                     </div>
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">總投入本金</div>
+                        <div class="text-xs font-medium text-slate-500 mb-1">總投入本金 <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
                         <div class="text-xl font-bold text-slate-800" x-text="totalCost > 0 ? formatMoney(totalCost) + ' 元' : '-'"></div>
                     </div>
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">未實現損益</div>
+                        <div class="text-xs font-medium text-slate-500 mb-1">未實現損益 <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
                         <div class="text-xl font-black flex items-baseline gap-1" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'">
                             <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
                             <span class="text-sm font-bold" x-show="roi !== null" x-text="'(' + roi + '%)'"></span>
@@ -194,72 +524,156 @@
                 </div>
             </div>
 
+            <!-- 動態深度投資報告 -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="bg-slate-50 border-b border-slate-200 p-5">
                     <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
                         <i class="fa-solid fa-book-open text-secondary"></i> 0050 深度投資洞察報告
                     </h2>
-                    <p class="text-sm text-slate-500 mt-1">此報告解說判斷市場位階的技術原理，供您作為定期定額加碼之參考。</p>
+                    <p class="text-sm text-slate-500 mt-1">此報告結合目前真實數據與技術原理解說，為您剖析當下是否為加碼良機。</p>
                 </div>
                 
                 <div class="p-6 space-y-8 text-slate-700 leading-relaxed">
                     
+                    <!-- 一、 技術面指標 (動態資料整合) -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">一、 技術面指標 (價格與動能)</h3>
                         
                         <div class="space-y-6 pl-2">
+                            <!-- 短線動能 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-bolt text-yellow-500"></i>短線狀態 (動能與情緒)</h4>
-                                <p class="text-sm mb-2"><strong>技術原理：</strong> 主要參考 KDJ 指標。KDJ 透過比較一段時間內的收盤價與最高/最低價，來衡量市場的「超買」或「超賣」情緒。</p>
-                                <p class="text-sm"><strong>判斷邏輯：</strong> 當 K 值跌破 20，代表市場在短期內遭遇非理性的恐慌拋售，處於「超跌」狀態。此時隨時有強勁反彈的契機，是短線資金切入的甜甜圈。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 主要參考 KDJ 指標。KDJ 透過比較一段時間內的收盤價與最高/最低價，來衡量市場的「超買」或「超賣」情緒。當K值低於20時，代表近期股價在區間內接近低點，短線市場情緒偏悲觀，確實常出現反彈。但要留意，超跌不等於最低點，在空頭市場中，K值可能長時間停留在低檔，如果你一看到 K < 20 就把子彈打光，後續真正見到底部時，你反而沒錢加碼，這在心理上會造成巨大的挫折感。因此把 K < 20 當作「短線加碼參考」，是合理的，但不適合當作唯一依據。</p>
+                                
+                                <div class="p-3 bg-white rounded-lg border border-slate-200">
+                                    <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
+                                    <div x-show="historicalDataLoaded">
+                                        <p class="text-sm" :class="calc_k < 20 ? 'text-red-600 font-bold' : 'text-slate-700'">
+                                            目前 0050 的 K 值為 <span x-text="calc_k.toFixed(2)"></span>。
+                                            <span x-show="calc_k < 20">已跌破 20 進入「超跌區」，隨時有強勁反彈的契機，是短線切入的好時機！</span>
+                                            <span x-show="calc_k >= 20 && calc_k <= 80">位於中性區間，市場情緒穩定，依原定紀律扣款即可。</span>
+                                            <span x-show="calc_k > 80">進入超買區，短線動能偏熱，不建議在此時單筆追高加碼。</span>
+                                        </p>
+                                    </div>
+                                    <div x-show="!historicalDataLoaded" class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</div>
+                                </div>
                             </div>
 
+                            <!-- 中線趨勢 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-chart-line text-blue-500"></i>中線趨勢 (均線價值)</h4>
-                                <p class="text-sm mb-2"><strong>技術原理：</strong> 參考 240 日移動平均線 (年線)。年線代表了過去一年內所有買進這檔股票投資人的「平均成本」。</p>
-                                <p class="text-sm"><strong>判斷邏輯：</strong> 當股價跌破年線，意味著現在買進的價格，比過去一年大多數人的成本還要便宜。這通常是左側交易者非常重視的中長線佈局點。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 參考 240 日移動平均線 (年線)。年線代表了過去一年內所有買進這檔股票投資人的「平均成本」。MA240大約相當於一年的交易日均線，因此很多人會把它視為「長期趨勢線」。當價格跌破 MA240 時，通常意味著市場進入修正或空頭階段、投資情緒明顯轉弱。像 2022年全球升息循環時，台股就曾跌破長期均線。對長期投資人來說，跌破年線常代表一件事：市場已經出現明顯修正，是非常合理的加碼點。如果此時進行額外加碼，長期平均成本通常會下降，因此把「跌破 MA240」當作加碼參考，是相對合理的做法。</p>
+                                
+                                <div class="p-3 bg-white rounded-lg border border-slate-200">
+                                    <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
+                                    <div x-show="historicalDataLoaded && calc_ma240 > 0">
+                                        <p class="text-sm" :class="currentPrice < calc_ma240 ? 'text-green-600 font-bold' : 'text-slate-700'">
+                                            目前年線 (MA240) 約為 <span x-text="calc_ma240.toFixed(2)"></span> 元。
+                                            <span x-show="currentPrice < calc_ma240">目前市價已「跌破年線」！買進價格比過去一年大多數人的成本還要便宜，是左側交易者非常重視的中長線佈局點。</span>
+                                            <span x-show="currentPrice >= calc_ma240">目前市價維持在年線之上，長線趨勢健康，尚未出現明顯被低估的機會。</span>
+                                        </p>
+                                    </div>
+                                    <div x-show="!historicalDataLoaded || calc_ma240 === 0" class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</div>
+                                </div>
                             </div>
 
+                            <!-- 長線防線 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-purple-500"></i>長線防線 (極端支撐)</h4>
-                                <p class="text-sm mb-2"><strong>技術原理：</strong> 參考更長週期的均線 (如五年線或十年線)，這是由數個景氣循環所構成的終極成本線。</p>
-                                <p class="text-sm"><strong>判斷邏輯：</strong> 台股歷史上，0050 跌破十年線的次數屈指可數，通常伴隨全球性的重大危機 (如金融海嘯、疫情)。一旦觸及此區間，代表長線極端防禦區已到，是放大本金重壓的罕見機會。</p>
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-purple-500"></i>長線防線 (十年線/極端支撐)</h4>
+                                <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 定期定額實務上，原本常看半年線 (120日均線) 作為防守關卡。但若拉長視角看月K線的MA120，代表大約10年的長期平均成本，也是所謂的「十年線」。這種長期均線很少被跌破，通常只有發生金融危機或全球性災難才會看到，例如2008年金融海嘯、2020年疫情股災。當市場跌到這個位置時，往往代表市場已經進入極度恐慌狀態。如果長期投資人有能力加碼，這往往是歷史上相對罕見的低點區域。但這種機會可能5～10年才出現一次，因此它更像是「極端加碼訊號」，而不是日常投資需要追蹤的指標。</p>
+                                
+                                <div class="p-3 bg-white rounded-lg border border-slate-200">
+                                    <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
+                                    <div x-show="historicalDataLoaded && calc_ma120 > 0">
+                                        <p class="text-sm" :class="currentPrice < calc_ma120 ? 'text-purple-600 font-bold' : 'text-slate-700'">
+                                            目前半年線 (日線MA120) 約為 <span x-text="calc_ma120.toFixed(2)"></span> 元。
+                                            <span x-show="currentPrice < calc_ma120">已觸及中長線防守區！這屬於相對罕見的大幅修正，可考慮動用預備金放大加碼金額。</span>
+                                            <span x-show="currentPrice >= calc_ma120">目前距離極端防守區仍有空間，未觸發加碼。</span>
+                                        </p>
+                                    </div>
+                                    <div x-show="!historicalDataLoaded || calc_ma120 === 0" class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- 個人部位修正 -->
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-user-tag text-teal-500"></i>個人部位修正</h4>
+                                <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 與大盤技術面無關，單純評估個人的持有成本。市價遠低於均價時加碼，能有效攤平、降低回本難度。</p>
+                                
+                                <div class="p-3 bg-white rounded-lg border border-slate-200">
+                                    <div class="text-sm font-bold mb-1">💡 您目前的狀態：</div>
+                                    <div>
+                                        <p class="text-sm" :class="avgCost > 0 && currentPrice <= (avgCost * 0.9) ? 'text-teal-600 font-bold' : 'text-slate-700'">
+                                            <span x-show="avgCost == 0">您尚無成本資料，請至「系統設定」輸入您的平均成本。</span>
+                                            <span x-show="avgCost > 0 && currentPrice <= (avgCost * 0.9)">目前市價已低於您成本的 10% 以上！強烈建議此時執行紀律攤平，加速拉低成本。</span>
+                                            <span x-show="avgCost > 0 && currentPrice > (avgCost * 0.9) && currentPrice < avgCost">目前帳面處於小幅修正，依原定計畫紀律扣款即可。</span>
+                                            <span x-show="avgCost > 0 && currentPrice >= avgCost">帳面為獲利狀態，無須特別修正。</span>
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </section>
 
+                    <!-- 二、 總體經濟與大盤 (靜態觀察指引) -->
                     <section>
-                        <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">二、 總體經濟與大盤指標 (基本面)</h3>
+                        <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">二、 總體經濟與大盤指標 (基本面)</h3>
                         
                         <div class="space-y-6 pl-2">
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-traffic-light text-red-500"></i>景氣循環 (國發會景氣燈號)</h4>
-                                <p class="text-sm mb-2"><strong>技術原理：</strong> 國發會每月公佈的信號，綜合了出口、股價、就業等數據，反映台灣整體的經濟冷熱。</p>
-                                <p class="text-sm"><strong>判斷邏輯：</strong> 股市領先基本面。「藍燈」代表景氣最低迷、百業蕭條，但此時往往是股市的長線最低點。「買在藍燈、賣在紅燈」是 0050 勝率極高的經典策略。</p>
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-scale-balanced text-emerald-500"></i>大盤位階 (股價淨值比 P/B)</h4>
+                                <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 將台股總市值除以所有上市公司的淨值總和。代表投資人願意用多少倍的價格去買企業的真實資產。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當大盤 P/B 跌至 1.5 倍甚至 1.3 倍以下時，代表整體台股被嚴重低估，企業資產正在「打折出售」，此時買進具備極高的安全邊際。</p>
+                                
+                                <div class="p-3 bg-white rounded-lg border border-slate-200">
+                                    <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
+                                    <p class="text-sm text-slate-700" x-show="pbRatio !== null">目前 0050 最新股價淨值比 (P/B) 約為 <span class="font-bold text-emerald-600" x-text="pbRatio"></span> 倍。</p>
+                                    <p class="text-sm text-slate-500" x-show="pbRatio === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由證交所讀取中...</p>
+                                </div>
                             </div>
 
-                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-scale-balanced text-emerald-500"></i>大盤位階 (股價淨值比 P/B)</h4>
-                                <p class="text-sm mb-2"><strong>技術原理：</strong> 將台股總市值除以所有上市公司的淨值總和。代表投資人願意用多少倍的價格去買企業的真實資產。</p>
-                                <p class="text-sm"><strong>判斷邏輯：</strong> 當大盤 P/B 跌至 1.5 倍甚至 1.3 倍以下時，代表整體台股被嚴重低估，企業資產正在「打折出售」，此時買進具備極高的安全邊際。</p>
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 opacity-90">
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-traffic-light text-red-500"></i>景氣循環 (國發會景氣燈號)</h4>
+                                <p class="text-sm mb-2"><strong>技術原理：</strong> 國發會每月公佈的信號，綜合了出口、股價、就業等數據，反映台灣整體的經濟冷熱。</p>
+                                <p class="text-sm mb-2"><strong>觀察重點：</strong> 股市領先基本面。「藍燈」代表景氣最低迷、百業蕭條，但此時往往是股市的長線最低點。「買在藍燈、賣在紅燈」是 0050 勝率極高的經典策略。</p>
+                                <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <p class="text-xs text-slate-500">※ 註：此資料因發布格式原因無法穩定自動抓取，請手動查詢當月燈號。</p>
+                                    <a href="https://www.ndc.gov.tw/nc_14813_35304" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往國發會查詢
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </section>
 
+                    <!-- 三、 籌碼與交易面 (靜態觀察指引) -->
                     <section>
-                        <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">三、 籌碼與交易面指標 (情緒面)</h3>
+                        <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">三、 籌碼與交易面指標 (情緒面)</h3>
+                        <p class="text-xs text-slate-500 mb-4 pl-3">此區塊為極端市況的觀察輔助。</p>
                         
                         <div class="space-y-6 pl-2">
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-water text-cyan-500"></i>市場恐慌度 (融資與 VIX)</h4>
-                                <p class="text-sm mb-2"><strong>技術原理：</strong> 觀察散戶的「融資餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
-                                <p class="text-sm"><strong>判斷邏輯：</strong> 當單日融資大幅減少，或是恐慌指數 (VIX) 飆高時，通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
+                                <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 觀察散戶的「融資餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少，或是恐慌指數 (VIX) 飆高時，通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
+
+                                <div class="p-3 bg-white rounded-lg border border-slate-200">
+                                    <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
+                                    <p class="text-sm text-slate-700" x-show="vix !== null">目前美股 VIX 恐慌指數為 <span class="font-bold text-cyan-600" x-text="vix"></span>。</p>
+                                    <p class="text-sm text-slate-500" x-show="vix === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</p>
+                                </div>
                             </div>
 
-                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 opacity-90">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-tags text-orange-500"></i>ETF 淨值折價</h4>
                                 <p class="text-sm mb-2"><strong>技術原理：</strong> 0050 是一籃子股票，這些股票當下的真實總價值為「淨值」，而您在市場上的買賣價為「市價」。</p>
-                                <p class="text-sm"><strong>判斷邏輯：</strong> 當市場出現恐慌拋售導致「市價 < 淨值」時，稱為折價。這等於您可以立刻用低於真實價值的折扣價買到台股前 50 大企業。</p>
+                                <p class="text-sm mb-2"><strong>觀察重點：</strong> 當市場出現恐慌拋售導致「市價 < 淨值」時，稱為折價。這等於您可以立刻用低於真實價值的折扣價買到台股前 50 大企業。</p>
+                                <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <p class="text-xs text-slate-500">※ 註：即時折溢價因防爬蟲機制無法穩定抓取，建議交易時手動確認。</p>
+                                    <a href="https://www.yuantaetfs.com/post/3093/premium" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往元大官網查詢
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -268,9 +682,10 @@
             </div>
         </div>
 
+        <!-- ==================== 系統設定頁面 ==================== -->
         <div x-show="activeTab === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
             
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-2xl mx-auto">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-2xl mx-auto mb-10">
                 <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-3"><i class="fa-solid fa-sliders text-secondary mr-2"></i>基礎部位與定期定額設定</h2>
                 
                 <div class="space-y-6">
@@ -294,11 +709,11 @@
                         
                         <div class="space-y-4">
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">投資計畫起始日</label>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">投資計畫起始日 (避免過往日期被重複扣除)</label>
                                 <input type="date" x-model="startDate" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">每月固定扣款金額 (元)</label>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">每次固定扣款金額 (元)</label>
                                 <input type="number" x-model.number="baseAmount" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
                             <div>
@@ -318,5 +733,22 @@
         </div>
 
     </div>
+
+    <!-- PWA 虛擬 Service Worker 註冊 (滿足 Android Chrome 安裝條件) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const sw = `
+                    self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
+                    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+                    self.addEventListener('fetch', e => {});
+                `;
+                const blob = new Blob([sw], { type: 'application/javascript' });
+                navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => {
+                    console.log("備註：如果您是直接打開本機檔案，無法安裝為 APP 是正常現象。請上傳至 GitHub Pages 後即可正常安裝。");
+                });
+            });
+        }
+    </script>
 </body>
 </html>
