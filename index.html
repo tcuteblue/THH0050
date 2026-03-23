@@ -57,16 +57,23 @@
                 lastCheckDate: null,
                 lastRemindedMonth: null, // 記錄上次提醒修改庫存的月份
                 
-                // === 手動加分項 ===
-                isBlueLight: false, // 景氣藍燈
-                isPanic: false,     // 市場極度恐慌
+                // === 手動與自動連動的指標勾選狀態 ===
+                cond_k: false,        // K < 20
+                cond_ma240: false,    // 跌破年線
+                cond_ma120: false,    // 跌破十年線
+                cond_pb: false,       // 淨值比 < 1.6
+                isBlueLight: false,   // 景氣藍燈
+                isPanic: false,       // 市場恐慌
+                cond_cost90: false,   // 低於個人成本 10%
+                cond_cost80: false,   // 低於個人成本 20%
+                cond_discount: false, // ETF折價
 
                 // === 市場資料與計算 ===
                 currentPrice: 0,
                 isFetching: false,
                 historicalDataLoaded: false,
                 calc_k: 0,
-                calc_ma120: 0,
+                calc_ma120: 0, // 變數名沿用，但實際計算為 2400 日 (十年線)
                 calc_ma240: 0,
                 
                 // === 進階基本面與籌碼資料 ===
@@ -102,9 +109,16 @@
                         this.showInstallBtn = true;
                     });
 
-                    // 監聽變動，隨時存檔
+                    // 監聽變動，隨時存檔 (包含手動切換狀態)
                     this.$watch('shares', () => this.saveData());
-                    this.$watch('avgCost', () => this.saveData());
+                    this.$watch('avgCost', () => {
+                        this.saveData();
+                        // 修改平均成本時自動重算成本落後指標
+                        if (this.avgCost > 0 && this.currentPrice > 0) {
+                            this.cond_cost90 = this.currentPrice <= this.avgCost * 0.9;
+                            this.cond_cost80 = this.currentPrice <= this.avgCost * 0.8;
+                        }
+                    });
                     this.$watch('baseAmount', () => this.saveData());
                     this.$watch('investmentDates', () => this.saveData());
                     this.$watch('startDate', () => this.saveData());
@@ -116,7 +130,6 @@
                 checkReminder() {
                     if (!this.investmentDates) return;
                     
-                    // 取得設定的所有扣款日，找出最後一天
                     const days = this.investmentDates.split(',')
                                     .map(d => parseInt(d.trim()))
                                     .filter(d => !isNaN(d) && d >= 1 && d <= 31);
@@ -126,7 +139,6 @@
                     const today = new Date();
                     const currentMonthKey = `${today.getFullYear()}-${today.getMonth()}`;
                     
-                    // 如果今天日期 > 本月最後扣款日，且這個月還沒提醒過
                     if (today.getDate() > maxDay && this.lastRemindedMonth !== currentMonthKey) {
                         this.showUpdateReminder = true;
                     }
@@ -161,10 +173,10 @@
                     
                     let historicalData = [];
 
-                    // 方案 1: FinMind API (專為台股設計，穩定度極高)
+                    // 方案 1: FinMind API
                     try {
                         const d = new Date();
-                        d.setFullYear(d.getFullYear() - 2); // 抓兩年資料
+                        d.setFullYear(d.getFullYear() - 12); // 抓 12 年資料以足夠計算 10 年線 (MA2400)
                         const startDate = d.toISOString().split('T')[0];
                         const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDate}`;
                         
@@ -183,10 +195,10 @@
                         console.warn("FinMind API 失敗，切換備援方案...", e);
                     }
 
-                    // 方案 2: Yahoo Finance 備援 (若 FinMind 意外失效)
+                    // 方案 2: Yahoo Finance 備援 (範圍改為 max 確保有十年以上資料)
                     if (historicalData.length === 0) {
                         try {
-                            const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=2y&interval=1d';
+                            const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
                             const proxies = [
                                 'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
                                 'https://corsproxy.io/?' + encodeURIComponent(yfUrl)
@@ -224,7 +236,7 @@
                         }
                     }
 
-                    // 抓取股價淨值比 (P/B) - 加入防掛死機制
+                    // 抓取股價淨值比 (P/B)
                     try {
                         const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                         if(pbRes.ok) {
@@ -239,19 +251,16 @@
                             this.pbRatio = 'API阻擋';
                         }
                     } catch(e) { 
-                        console.warn("P/B API 抓取失敗"); 
                         this.pbRatio = 'API阻擋';
                     }
 
-                    // 抓取大盤融資餘額 (取代 VIX)
+                    // 抓取大盤融資餘額
                     try {
                         const marginRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN');
                         if(marginRes.ok) {
                             const marginData = await marginRes.json();
-                            // 尋找「融資金額(仟元)」項目
                             const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
                             if (marginAmountItem && marginAmountItem.CurrentBalance) {
-                                // 將字串如 "300,000,000" 去除逗號，計算為「億」元
                                 let amountStr = marginAmountItem.CurrentBalance.replace(/,/g, '');
                                 let amountHundredMillion = (parseFloat(amountStr) / 100000).toFixed(2);
                                 this.marginBalance = amountHundredMillion + ' 億';
@@ -262,11 +271,10 @@
                             this.marginBalance = 'API阻擋';
                         }
                     } catch(e) { 
-                        console.warn("大盤融資餘額 API 抓取失敗"); 
                         this.marginBalance = 'API阻擋';
                     }
 
-                    // 抓取 ETF 折溢價 - 嘗試透過代理繞過元大防火牆
+                    // 抓取 ETF 折溢價
                     try {
                         const yuantaApi = 'https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066';
                         const yuantaRes = await fetch('https://corsproxy.io/?' + encodeURIComponent(yuantaApi));
@@ -281,7 +289,6 @@
                             this.etfDiscount = 'API阻擋';
                         }
                     } catch(e) {
-                        console.warn("ETF折溢價 API 抓取失敗");
                         this.etfDiscount = 'API阻擋';
                     }
 
@@ -295,6 +302,9 @@
                         console.warn("歷史資料無法載入，回退至 TWSE 即時股價");
                         await this.fetchCurrentPrice();
                     }
+
+                    // 根據取得的最新數據，自動將打分勾選框更新為最新狀態
+                    this.autoCheckIndicators();
 
                     this.isFetching = false;
                 },
@@ -310,9 +320,7 @@
                                 this.currentPrice = parseFloat(stock0050.ClosingPrice.replace(/,/g, ''));
                             }
                         }
-                    } catch (error) {
-                        console.error("備用股價抓取失敗", error);
-                    }
+                    } catch (error) {}
                 },
 
                 // 計算動態技術指標
@@ -320,11 +328,16 @@
                     const len = data.length;
                     this.currentPrice = parseFloat(data[len - 1].close.toFixed(2));
 
-                    if (len >= 120) {
+                    // 計算十年線 (約 2400 日)
+                    if (len >= 2400) {
                         let sum = 0;
-                        for(let i = len - 120; i < len; i++) sum += data[i].close;
-                        this.calc_ma120 = sum / 120;
+                        for(let i = len - 2400; i < len; i++) sum += data[i].close;
+                        this.calc_ma120 = sum / 2400; 
+                    } else {
+                        this.calc_ma120 = 0; // 資料不足 10 年
                     }
+                    
+                    // 計算年線 (240 日)
                     if (len >= 240) {
                         let sum = 0;
                         for(let i = len - 240; i < len; i++) sum += data[i].close;
@@ -343,6 +356,27 @@
                         d = (2/3) * d + (1/3) * k;
                     }
                     this.calc_k = k;
+                },
+
+                // 全自動帶入指標評分勾選框的狀態
+                autoCheckIndicators() {
+                    if (this.calc_k > 0) this.cond_k = this.calc_k < 20;
+                    if (this.calc_ma240 > 0) this.cond_ma240 = this.currentPrice < this.calc_ma240;
+                    if (this.calc_ma120 > 0) this.cond_ma120 = this.currentPrice < this.calc_ma120;
+                    
+                    let pb = parseFloat(this.pbRatio);
+                    if (!isNaN(pb)) this.cond_pb = pb < 1.6;
+                    
+                    if (this.avgCost > 0) {
+                        this.cond_cost90 = this.currentPrice <= this.avgCost * 0.9;
+                        this.cond_cost80 = this.currentPrice <= this.avgCost * 0.8;
+                    } else {
+                        this.cond_cost90 = false;
+                        this.cond_cost80 = false;
+                    }
+
+                    let discount = parseFloat(this.etfDiscount);
+                    if (!isNaN(discount)) this.cond_discount = discount < 0;
                 },
 
                 // 自動扣款邏輯
@@ -377,7 +411,6 @@
                             let executedPrice = this.currentPrice;
                             let executedTime = currentDate;
 
-                            // 往後尋找最近的一個交易日 (例如目標日是週六，則找到週一)
                             for (let i = 0; i < historicalData.length; i++) {
                                 if (historicalData[i].time >= targetTime) {
                                     executedPrice = historicalData[i].close;
@@ -393,7 +426,6 @@
                             addedCostTotal += actualCost;
 
                             let dateStr = currentDate.toLocaleDateString();
-                            // 如果實際扣款日與預定扣款日不同，加上順延提示
                             if (executedTime.getTime() !== currentDate.getTime()) {
                                 dateStr = `${dateStr} (順延至 ${executedTime.toLocaleDateString()})`;
                             }
@@ -420,35 +452,28 @@
                     this.saveData();
                 },
 
-                // === 計算屬性：綜合評分系統 ===
+                // === 計算屬性：綜合評分系統 (依據所有手動/自動連動的勾選框計算) ===
                 get currentScore() {
-                    if (!this.historicalDataLoaded || this.currentPrice === 0) return 0;
-                    
                     let s = 0;
                     
-                    // A. 技術面與趨勢 (最高45分)
-                    if (this.calc_k < 20) s += 10;
-                    if (this.calc_ma240 > 0 && this.currentPrice < this.calc_ma240) s += 15;
-                    if (this.calc_ma120 > 0 && this.currentPrice < this.calc_ma120) s += 20;
+                    // A. 技術面與趨勢
+                    if (this.cond_k) s += 10;
+                    if (this.cond_ma240) s += 15;
+                    if (this.cond_ma120) s += 20;
 
-                    // B. 總體經濟與大盤價值 (最高35分)
-                    let pb = parseFloat(this.pbRatio);
-                    if (!isNaN(pb) && pb < 1.6) s += 15;
+                    // B. 總體經濟與大盤價值
+                    if (this.cond_pb) s += 15;
                     if (this.isBlueLight) s += 20;
 
-                    // C. 籌碼與情緒面 (最高10分)
+                    // C. 籌碼與情緒面
                     if (this.isPanic) s += 10;
 
-                    // D. 個人紀律與折溢價 (滿分10分，最高可得15分加分)
-                    if (this.avgCost > 0) {
-                        if (this.currentPrice <= this.avgCost * 0.9) s += 5;
-                        if (this.currentPrice <= this.avgCost * 0.8) s += 5;
-                    }
-                    
-                    let discount = parseFloat(this.etfDiscount);
-                    if (!isNaN(discount) && discount < 0) s += 5; // 折價加分
+                    // D. 個人紀律與折溢價
+                    if (this.cond_cost90) s += 5;
+                    if (this.cond_cost80) s += 5;
+                    if (this.cond_discount) s += 5;
 
-                    return Math.min(s, 100); // 最高限制顯示 100 分
+                    return Math.min(s, 100); // 滿分雖可達 105，但最高限制顯示 100 分
                 },
 
                 // 根據總分產生操作建議
@@ -629,8 +654,8 @@
                 </div>
             </div>
 
-            <!-- 動態加碼雷達與行動建議 (新增) -->
-            <div class="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 md:p-8 mb-6 relative overflow-hidden text-white" x-show="historicalDataLoaded" x-transition>
+            <!-- 動態加碼雷達與行動建議 -->
+            <div class="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 md:p-8 mb-6 relative overflow-hidden text-white" x-transition>
                 <div class="absolute -top-6 -right-6 p-4 opacity-5 text-9xl"><i class="fa-solid fa-crosshairs"></i></div>
                 
                 <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-center relative z-10">
@@ -661,18 +686,66 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
 
-                        <!-- 手動加分開關 -->
-                        <div class="flex flex-col sm:flex-row gap-3 mt-2">
-                            <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-4 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition w-full sm:w-auto">
-                                <input type="checkbox" x-model="isBlueLight" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
-                                <span>景氣燈號為藍燈 <strong class="text-blue-400 ml-1">+20分</strong></span>
-                            </label>
-                            <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-4 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition w-full sm:w-auto">
-                                <input type="checkbox" x-model="isPanic" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
-                                <span>市場極度恐慌/斷頭 <strong class="text-blue-400 ml-1">+10分</strong></span>
-                            </label>
-                        </div>
+                <!-- 手動加分開關與全指標面板 -->
+                <div class="mt-5 border-t border-slate-700/50 pt-5 relative z-10">
+                    <div class="text-sm text-slate-300 mb-3 flex items-center justify-between">
+                        <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-500 ml-1 hidden sm:inline">(系統自動判定，您亦可點擊勾選框進行沙盤推演)</span></span>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <!-- 技術面 -->
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="cond_k" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">短線 K值 < 20</span>
+                            <strong class="text-blue-400">+10分</strong>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="cond_ma240" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">跌破年線 (MA240)</span>
+                            <strong class="text-blue-400">+15分</strong>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="cond_ma120" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">跌破十年線 (MA2400)</span>
+                            <strong class="text-blue-400">+20分</strong>
+                        </label>
+
+                        <!-- 總經與籌碼 -->
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="cond_pb" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">大盤淨值比 < 1.6</span>
+                            <strong class="text-blue-400">+15分</strong>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="isBlueLight" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">景氣燈號為藍燈</span>
+                            <strong class="text-blue-400">+20分</strong>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="isPanic" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">市場極度恐慌/斷頭</span>
+                            <strong class="text-blue-400">+10分</strong>
+                        </label>
+
+                        <!-- 個人與折溢價 -->
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="cond_cost90" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">市價低於均價 10%</span>
+                            <strong class="text-blue-400">+5分</strong>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="cond_cost80" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">市價低於均價 20%</span>
+                            <strong class="text-blue-400">+5分</strong>
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
+                            <input type="checkbox" x-model="cond_discount" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">ETF 呈現折價</span>
+                            <strong class="text-blue-400">+5分</strong>
+                        </label>
                     </div>
                 </div>
             </div>
@@ -739,12 +812,15 @@
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
                                     <div x-show="historicalDataLoaded && calc_ma120 > 0">
                                         <p class="text-sm" :class="currentPrice < calc_ma120 ? 'text-purple-600 font-bold' : 'text-slate-700'">
-                                            目前半年線 (日線MA120) 約為 <span x-text="calc_ma120.toFixed(2)"></span> 元。
+                                            目前十年線 (約當日線MA2400) 約為 <span x-text="calc_ma120.toFixed(2)"></span> 元。
                                             <span x-show="currentPrice < calc_ma120">已觸及中長線防守區！這屬於相對罕見的大幅修正，可考慮動用預備金放大加碼金額。</span>
                                             <span x-show="currentPrice >= calc_ma120">目前距離極端防守區仍有空間，未觸發加碼。</span>
                                         </p>
                                     </div>
-                                    <div x-show="!historicalDataLoaded || calc_ma120 === 0" class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</div>
+                                    <div x-show="!historicalDataLoaded || calc_ma120 === 0" class="text-sm text-slate-500">
+                                        <span x-show="!historicalDataLoaded"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</span>
+                                        <span x-show="historicalDataLoaded && calc_ma120 === 0">因系統歷史資料區間不足 10 年，暫時無法計算。</span>
+                                    </div>
                                 </div>
                             </div>
                             
