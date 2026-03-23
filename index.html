@@ -67,7 +67,8 @@
                 
                 // === 進階基本面與籌碼資料 ===
                 pbRatio: null,
-                vix: null,
+                marginBalance: null, // 大盤融資餘額
+                etfDiscount: null,
 
                 // === 扣款與提醒日誌 ===
                 showLogs: false,
@@ -217,28 +218,68 @@
                         }
                     }
 
-                    // 抓取股價淨值比 (P/B)
+                    // 抓取股價淨值比 (P/B) - 加入防掛死機制
                     try {
                         const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                         if(pbRes.ok) {
                             const pbData = await pbRes.json();
                             const stock0050 = pbData.find(s => s.Code === '0050');
-                            if (stock0050) this.pbRatio = parseFloat(stock0050.PBratio).toFixed(2);
+                            if (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') {
+                                this.pbRatio = parseFloat(stock0050.PBratio).toFixed(2);
+                            } else {
+                                this.pbRatio = '無資料';
+                            }
+                        } else {
+                            this.pbRatio = 'API阻擋';
                         }
-                    } catch(e) { console.warn("P/B API 抓取失敗"); }
+                    } catch(e) { 
+                        console.warn("P/B API 抓取失敗"); 
+                        this.pbRatio = 'API阻擋';
+                    }
 
-                    // 抓取 VIX 恐慌指數
+                    // 抓取大盤融資餘額 (取代 VIX)
                     try {
-                        const vixUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/^VIX?range=1d&interval=1d';
-                        const proxy = 'https://api.allorigins.win/raw?url=';
-                        const vixRes = await fetch(proxy + encodeURIComponent(vixUrl));
-                        if(vixRes.ok) {
-                            const vixData = await vixRes.json();
-                            this.vix = parseFloat(vixData.chart.result[0].meta.regularMarketPrice).toFixed(2);
+                        const marginRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN');
+                        if(marginRes.ok) {
+                            const marginData = await marginRes.json();
+                            // 尋找「融資金額(仟元)」項目
+                            const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
+                            if (marginAmountItem && marginAmountItem.CurrentBalance) {
+                                // 將字串如 "300,000,000" 去除逗號，計算為「億」元
+                                let amountStr = marginAmountItem.CurrentBalance.replace(/,/g, '');
+                                let amountHundredMillion = (parseFloat(amountStr) / 100000).toFixed(2);
+                                this.marginBalance = amountHundredMillion + ' 億';
+                            } else {
+                                this.marginBalance = '無資料';
+                            }
+                        } else {
+                            this.marginBalance = 'API阻擋';
                         }
-                    } catch(e) { console.warn("VIX API 抓取失敗"); }
+                    } catch(e) { 
+                        console.warn("大盤融資餘額 API 抓取失敗"); 
+                        this.marginBalance = 'API阻擋';
+                    }
 
-                    // 處理抓到的資料
+                    // 抓取 ETF 折溢價 - 嘗試透過代理繞過元大防火牆
+                    try {
+                        const yuantaApi = 'https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066';
+                        const yuantaRes = await fetch('https://corsproxy.io/?' + encodeURIComponent(yuantaApi));
+                        if (yuantaRes.ok) {
+                            const yuantaData = await yuantaRes.json();
+                            if (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) {
+                                this.etfDiscount = yuantaData[0].pdRate + '%';
+                            } else {
+                                this.etfDiscount = '無資料';
+                            }
+                        } else {
+                            this.etfDiscount = 'API阻擋';
+                        }
+                    } catch(e) {
+                        console.warn("ETF折溢價 API 抓取失敗");
+                        this.etfDiscount = 'API阻擋';
+                    }
+
+                    // 處理抓到的歷史資料與技術指標
                     if (historicalData.length > 0) {
                         this.historicalDataLoaded = true;
                         this.calculateIndicators(historicalData);
@@ -627,8 +668,16 @@
                                 
                                 <div class="p-3 bg-white rounded-lg border border-slate-200">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
-                                    <p class="text-sm text-slate-700" x-show="pbRatio !== null">目前 0050 最新股價淨值比 (P/B) 約為 <span class="font-bold text-emerald-600" x-text="pbRatio"></span> 倍。</p>
+                                    <p class="text-sm text-slate-700" x-show="pbRatio !== null && pbRatio !== 'API阻擋' && pbRatio !== '無資料'">目前 0050 最新股價淨值比 (P/B) 約為 <span class="font-bold text-emerald-600" x-text="pbRatio"></span> 倍。</p>
+                                    <p class="text-sm text-red-500" x-show="pbRatio === 'API阻擋' || pbRatio === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 自動抓取失敗 (API阻擋)，這項數值通常不易變動，請作為手動輔助參考。</p>
                                     <p class="text-sm text-slate-500" x-show="pbRatio === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由證交所讀取中...</p>
+                                </div>
+
+                                <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手動至證交所確認最新大盤淨值比。</p>
+                                    <a href="https://www.twse.com.tw/zh/trading/historical/bwibbu.html" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往證交所查詢
+                                    </a>
                                 </div>
                             </div>
 
@@ -638,7 +687,7 @@
                                 <p class="text-sm mb-2"><strong>觀察重點：</strong> 股市領先基本面。「藍燈」代表景氣最低迷、百業蕭條，但此時往往是股市的長線最低點。「買在藍燈、賣在紅燈」是 0050 勝率極高的經典策略。</p>
                                 <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <p class="text-xs text-slate-500">※ 註：此資料因發布格式原因無法穩定自動抓取，請手動查詢當月燈號。</p>
-                                    <a href="https://www.ndc.gov.tw/nc_14813_35304" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                    <a href="https://index.ndc.gov.tw/n/zh_tw" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
                                         <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往國發會查詢
                                     </a>
                                 </div>
@@ -653,14 +702,22 @@
                         
                         <div class="space-y-6 pl-2">
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-water text-cyan-500"></i>市場恐慌度 (融資與 VIX)</h4>
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-water text-cyan-500"></i>市場恐慌度 (大盤融資餘額)</h4>
                                 <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 觀察散戶的「融資餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
-                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少，或是恐慌指數 (VIX) 飆高時，通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
 
                                 <div class="p-3 bg-white rounded-lg border border-slate-200">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
-                                    <p class="text-sm text-slate-700" x-show="vix !== null">目前美股 VIX 恐慌指數為 <span class="font-bold text-cyan-600" x-text="vix"></span>。</p>
-                                    <p class="text-sm text-slate-500" x-show="vix === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</p>
+                                    <p class="text-sm text-slate-700" x-show="marginBalance !== null && marginBalance !== 'API阻擋' && marginBalance !== '無資料'">目前大盤融資餘額為 <span class="font-bold text-cyan-600" x-text="marginBalance"></span>。</p>
+                                    <p class="text-sm text-red-500" x-show="marginBalance === 'API阻擋' || marginBalance === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 自動抓取失敗 (網路連線或API阻擋)，請手動確認。</p>
+                                    <p class="text-sm text-slate-500" x-show="marginBalance === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由證交所讀取中...</p>
+                                </div>
+
+                                <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手動至證交所確認融資餘額變化。</p>
+                                    <a href="https://www.twse.com.tw/zh/trading/margin/mi-margn.html" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-cyan-100 text-cyan-700 rounded-lg hover:bg-cyan-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往證交所查詢
+                                    </a>
                                 </div>
                             </div>
 
@@ -668,9 +725,17 @@
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-tags text-orange-500"></i>ETF 淨值折價</h4>
                                 <p class="text-sm mb-2"><strong>技術原理：</strong> 0050 是一籃子股票，這些股票當下的真實總價值為「淨值」，而您在市場上的買賣價為「市價」。</p>
                                 <p class="text-sm mb-2"><strong>觀察重點：</strong> 當市場出現恐慌拋售導致「市價 < 淨值」時，稱為折價。這等於您可以立刻用低於真實價值的折扣價買到台股前 50 大企業。</p>
+                                
+                                <div class="p-3 bg-white rounded-lg border border-slate-200 mb-4">
+                                    <div class="text-sm font-bold mb-1">💡 目前即時折溢價：</div>
+                                    <p class="text-sm text-slate-700" x-show="etfDiscount !== null && etfDiscount !== 'API阻擋' && etfDiscount !== '無資料'">系統嘗試為您抓取最新估計折溢價為： <span class="font-bold text-orange-600" x-text="etfDiscount"></span></p>
+                                    <p class="text-sm text-red-500" x-show="etfDiscount === 'API阻擋' || etfDiscount === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 網頁防護阻擋自動抓取，請點擊下方按鈕直接查看官網。</p>
+                                    <p class="text-sm text-slate-500" x-show="etfDiscount === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由元大官網讀取中...</p>
+                                </div>
+
                                 <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <p class="text-xs text-slate-500">※ 註：即時折溢價因防爬蟲機制無法穩定抓取，建議交易時手動確認。</p>
-                                    <a href="https://www.yuantaetfs.com/post/3093/premium" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                    <p class="text-xs text-slate-500">※ 註：若有重大行情波動，請務必手動進入官網以獲得最精準的數值。</p>
+                                    <a href="https://www.yuantaetfs.com/tradeInfo/comparison/0050/NAVhistory#table" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
                                         <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往元大官網查詢
                                     </a>
                                 </div>
