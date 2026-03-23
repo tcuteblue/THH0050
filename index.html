@@ -2,25 +2,21 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <!-- 設定網頁在手機上正確縮放，避免畫面變形 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>0050 定期定額與加碼策略系統</title>
     
-    <!-- PWA 與 APP 安裝設定 (已更改為讀取外部 icon.png) -->
+    <!-- ==================== PWA 與 APP 安裝設定區 ==================== -->
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="0050投資建議">
-    
-    <!-- 指定 iOS 桌面圖示 -->
     <link rel="apple-touch-icon" href="./icon.png">
-    
-    <!-- 指定 Android / PWA 桌面圖示與設定 -->
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
-    <!-- 引入 Tailwind CSS 與設定 -->
+    <!-- ==================== 外部資源引入區 ==================== -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // 加上 typeof 與 try-catch 雙重防護，避免因網路延遲導致 tailwind 未定義時發生崩潰
         try {
             if (typeof tailwind !== 'undefined') {
                 tailwind.config = {
@@ -31,73 +27,74 @@
             console.warn("Tailwind 設定載入延遲", e);
         }
     </script>
-    
-    <!-- 引入 FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- 自訂樣式 -->
+    <!-- ==================== 自訂樣式設定區 ==================== -->
     <style>
-        /* 將基礎字體從預設的 16px 放大 4 級至 20px，讓整個系統等比例全局放大 */
         html { font-size: 20px; }
-        
-        /* 調整輸入框字體，避免小於 16px 觸發 iOS 縮放，同時跟隨系統全局放大 */
         input[type="text"], input[type="number"], input[type="date"] { font-size: 1rem; }
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        /* x-cloak 會在 Alpine 初始化完成後自動移除，防止畫面閃爍 */
         [x-cloak] { display: none !important; }
         .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
-        /* 隱藏滾動條以美化標籤列橫向滑動 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 
-    <!-- 確保 Alpine.js 元件在核心載入前註冊完成 -->
+    <!-- ==================== 核心程式邏輯區 (使用 Alpine.js) ==================== -->
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('investmentApp', () => ({
-                // === 頁面導航 ===
-                activeTab: 'dashboard', // 'dashboard' (主控台), 'report' (報告), 或是 'settings' (設定)
-
-                // === 基本資料 (設定頁) ===
-                shares: 0,
-                avgCost: 0, 
-                baseAmount: 10000,
-                investmentDates: '15', 
-                startDate: '', // 計畫起始日
-                lastCheckDate: null,
-                lastRemindedMonth: null, // 記錄上次提醒修改庫存的月份
                 
-                // === 手動與自動連動的指標勾選狀態 ===
-                cond_k: false,        // K < 20
-                cond_ma240: false,    // 跌破年線
-                cond_ma120: false,    // 跌破十年線
-                cond_pb: false,       // 淨值比 < 1.6
-                isBlueLight: false,   // 景氣藍燈
-                isPanic: false,       // 市場恐慌
-                cond_cost90: false,   // 低於個人成本 10%
-                cond_cost80: false,   // 低於個人成本 20%
-                cond_discount: false, // ETF折價
+                activeTab: 'dashboard', 
 
-                // === 市場資料與計算 ===
+                // [使用者資料變數]
+                shares: 0,              
+                avgCost: 0,             
+                startDate: '',          
+                lastCheckDate: null,    
+                lastRemindedMonth: null,
+                
+                // [全新升級：支援多筆不同日期的扣款設定]
+                investmentPlans: [],
+
+                // [單筆手動加碼變數]
+                manualShares: null,
+                manualPrice: null,
+
+                // [全域訊息彈窗]
+                showMsgBox: false,
+                msgBoxText: '',
+
+                // [計分指標變數]
+                cond_k: false,        
+                cond_ma240: false,    
+                cond_ma120: false,    
+                cond_pb: false,       
+                isBlueLight: false,   
+                isPanic: false,       
+                cond_cost90: false,   
+                cond_cost80: false,   
+                cond_discount: false, 
+
+                // [市場資料與計算]
                 currentPrice: 0,
                 isFetching: false,
                 historicalDataLoaded: false,
                 calc_k: 0,
-                calc_ma120: 0, // 變數名沿用，但實際計算為 2400 日 (十年線)
+                calc_ma120: 0, 
                 calc_ma240: 0,
                 
-                // === 進階基本面與籌碼資料 ===
                 pbRatio: null,
-                marginBalance: null, // 大盤融資餘額
+                marginBalance: null, 
                 etfDiscount: null,
 
-                // === 扣款與提醒日誌 ===
+                // [扣款與提醒日誌]
                 showLogs: false,
                 newLogs: [],
                 showUpdateReminder: false,
 
-                // === APP 安裝 ===
+                // [APP 安裝]
                 deferredPrompt: null,
                 showInstallBtn: false,
 
@@ -120,30 +117,64 @@
                         this.showInstallBtn = true;
                     });
 
-                    // 監聽變動，隨時存檔 (包含手動切換狀態)
+                    // 監聽變動，隨時存檔
                     this.$watch('shares', () => this.saveData());
                     this.$watch('avgCost', () => {
                         this.saveData();
-                        // 修改平均成本時自動重算成本落後指標
                         if (this.avgCost > 0 && this.currentPrice > 0) {
                             this.cond_cost90 = this.currentPrice <= this.avgCost * 0.9;
                             this.cond_cost80 = this.currentPrice <= this.avgCost * 0.8;
                         }
                     });
-                    this.$watch('baseAmount', () => this.saveData());
-                    this.$watch('investmentDates', () => this.saveData());
                     this.$watch('startDate', () => this.saveData());
                     this.$watch('isBlueLight', () => this.saveData());
                     this.$watch('isPanic', () => this.saveData());
+                    // 深度監聽扣款計畫陣列的變化 (新增、修改、刪除)
+                    this.$watch('investmentPlans', () => this.saveData(), { deep: true });
+                },
+
+                // 新增一筆扣款計畫
+                addPlan() {
+                    this.investmentPlans.push({
+                        id: Date.now(),
+                        day: 15, // 預設 15 號
+                        amount: 10000 // 預設 1 萬元
+                    });
+                },
+
+                // 刪除一筆扣款計畫
+                removePlan(id) {
+                    this.investmentPlans = this.investmentPlans.filter(p => p.id !== id);
+                },
+
+                // 執行單筆手動加碼
+                executeManualAdd() {
+                    if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0) {
+                        this.msgBoxText = '請輸入大於 0 的股數與成交單價！';
+                        this.showMsgBox = true;
+                        return;
+                    }
+                    let currentTotalCost = this.shares * this.avgCost;
+                    let addedCost = this.manualShares * this.manualPrice;
+                    let newTotalCost = currentTotalCost + addedCost;
+                    
+                    this.shares += this.manualShares;
+                    this.avgCost = parseFloat((newTotalCost / this.shares).toFixed(2));
+                    
+                    // 清空輸入框並存檔
+                    this.manualShares = null;
+                    this.manualPrice = null;
+                    this.saveData();
+                    
+                    this.msgBoxText = '✅ 單筆加碼已成功併入您的庫存，均價已重新計算！';
+                    this.showMsgBox = true;
                 },
 
                 // 檢查是否需要提醒對帳 (超過本月最後一個扣款日)
                 checkReminder() {
-                    if (!this.investmentDates) return;
+                    if (!this.investmentPlans || this.investmentPlans.length === 0) return;
                     
-                    const days = this.investmentDates.split(',')
-                                    .map(d => parseInt(d.trim()))
-                                    .filter(d => !isNaN(d) && d >= 1 && d <= 31);
+                    const days = this.investmentPlans.map(p => parseInt(p.day)).filter(d => !isNaN(d) && d >= 1 && d <= 31);
                     if (days.length === 0) return;
                     
                     const maxDay = Math.max(...days);
@@ -181,40 +212,26 @@
                 async fetchDataAndProcess() {
                     if (this.isFetching) return;
                     this.isFetching = true;
-                    
                     let historicalData = [];
 
-                    // 方案 1: FinMind API
                     try {
                         const d = new Date();
-                        d.setFullYear(d.getFullYear() - 12); // 抓 12 年資料以足夠計算 10 年線 (MA2400)
+                        d.setFullYear(d.getFullYear() - 12); 
                         const startDate = d.toISOString().split('T')[0];
                         const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDate}`;
-                        
                         const response = await fetch(finmindUrl);
                         const json = await response.json();
-                        
                         if (json.msg === 'success' && json.data && json.data.length > 0) {
                             historicalData = json.data.map(item => ({
-                                time: new Date(item.date).getTime(),
-                                close: item.close,
-                                high: item.max,
-                                low: item.min
+                                time: new Date(item.date).getTime(), close: item.close, high: item.max, low: item.min
                             }));
                         }
-                    } catch (e) {
-                        console.warn("FinMind API 失敗，切換備援方案...", e);
-                    }
+                    } catch (e) { console.warn("FinMind API 失敗，切換備援方案...", e); }
 
-                    // 方案 2: Yahoo Finance 備援 (範圍改為 max 確保有十年以上資料)
                     if (historicalData.length === 0) {
                         try {
                             const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
-                            const proxies = [
-                                'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
-                                'https://corsproxy.io/?' + encodeURIComponent(yfUrl)
-                            ];
-
+                            const proxies = ['https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl), 'https://corsproxy.io/?' + encodeURIComponent(yfUrl)];
                             for (let proxy of proxies) {
                                 try {
                                     const response = await fetch(proxy);
@@ -224,48 +241,28 @@
                                             const result = data.chart.result[0];
                                             const timestamps = result.timestamp;
                                             const quotes = result.indicators.quote[0];
-
                                             for(let i = 0; i < timestamps.length; i++) {
                                                 if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
-                                                    historicalData.push({
-                                                        time: timestamps[i] * 1000,
-                                                        close: quotes.close[i],
-                                                        high: quotes.high[i],
-                                                        low: quotes.low[i]
-                                                    });
+                                                    historicalData.push({ time: timestamps[i] * 1000, close: quotes.close[i], high: quotes.high[i], low: quotes.low[i] });
                                                 }
                                             }
                                             break; 
                                         }
                                     }
-                                } catch (e) {
-                                    console.warn("切換備援代理伺服器...");
-                                }
+                                } catch (e) {}
                             }
-                        } catch (error) {
-                            console.warn("Yahoo API 備援抓取失敗", error);
-                        }
+                        } catch (error) {}
                     }
 
-                    // 抓取股價淨值比 (P/B)
                     try {
                         const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                         if(pbRes.ok) {
                             const pbData = await pbRes.json();
                             const stock0050 = pbData.find(s => s.Code === '0050');
-                            if (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') {
-                                this.pbRatio = parseFloat(stock0050.PBratio).toFixed(2);
-                            } else {
-                                this.pbRatio = '無資料';
-                            }
-                        } else {
-                            this.pbRatio = 'API阻擋';
-                        }
-                    } catch(e) { 
-                        this.pbRatio = 'API阻擋';
-                    }
+                            this.pbRatio = (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') ? parseFloat(stock0050.PBratio).toFixed(2) : '無資料';
+                        } else this.pbRatio = 'API阻擋';
+                    } catch(e) { this.pbRatio = 'API阻擋'; }
 
-                    // 抓取大盤融資餘額
                     try {
                         const marginRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN');
                         if(marginRes.ok) {
@@ -273,82 +270,53 @@
                             const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
                             if (marginAmountItem && marginAmountItem.CurrentBalance) {
                                 let amountStr = marginAmountItem.CurrentBalance.replace(/,/g, '');
-                                let amountHundredMillion = (parseFloat(amountStr) / 100000).toFixed(2);
-                                this.marginBalance = amountHundredMillion + ' 億';
-                            } else {
-                                this.marginBalance = '無資料';
-                            }
-                        } else {
-                            this.marginBalance = 'API阻擋';
-                        }
-                    } catch(e) { 
-                        this.marginBalance = 'API阻擋';
-                    }
+                                this.marginBalance = (parseFloat(amountStr) / 100000).toFixed(2) + ' 億';
+                            } else this.marginBalance = '無資料';
+                        } else this.marginBalance = 'API阻擋';
+                    } catch(e) { this.marginBalance = 'API阻擋'; }
 
-                    // 抓取 ETF 折溢價
                     try {
                         const yuantaApi = 'https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066';
                         const yuantaRes = await fetch('https://corsproxy.io/?' + encodeURIComponent(yuantaApi));
                         if (yuantaRes.ok) {
                             const yuantaData = await yuantaRes.json();
-                            if (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) {
-                                this.etfDiscount = yuantaData[0].pdRate + '%';
-                            } else {
-                                this.etfDiscount = '無資料';
-                            }
-                        } else {
-                            this.etfDiscount = 'API阻擋';
-                        }
-                    } catch(e) {
-                        this.etfDiscount = 'API阻擋';
-                    }
+                            this.etfDiscount = (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) ? yuantaData[0].pdRate + '%' : '無資料';
+                        } else this.etfDiscount = 'API阻擋';
+                    } catch(e) { this.etfDiscount = 'API阻擋'; }
 
-                    // 處理抓到的歷史資料與技術指標
                     if (historicalData.length > 0) {
                         this.historicalDataLoaded = true;
                         this.calculateIndicators(historicalData);
                         this.processAutoDeduct(historicalData);
                     } else {
-                        // 方案 3: 若歷史資料全掛，至少試著從證交所抓取今日最新股價
-                        console.warn("歷史資料無法載入，回退至 TWSE 即時股價");
                         await this.fetchCurrentPrice();
                     }
 
-                    // 根據取得的最新數據，自動將打分勾選框更新為最新狀態
                     this.autoCheckIndicators();
-
                     this.isFetching = false;
                 },
 
-                // 備用：取得台灣證交所最新單日股價
                 async fetchCurrentPrice() {
                     try {
                         const twseResponse = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
                         if (twseResponse.ok) {
                             const twseData = await twseResponse.json();
                             const stock0050 = twseData.find(stock => stock.Code === '0050');
-                            if (stock0050 && stock0050.ClosingPrice) {
-                                this.currentPrice = parseFloat(stock0050.ClosingPrice.replace(/,/g, ''));
-                            }
+                            if (stock0050 && stock0050.ClosingPrice) this.currentPrice = parseFloat(stock0050.ClosingPrice.replace(/,/g, ''));
                         }
                     } catch (error) {}
                 },
 
-                // 計算動態技術指標
                 calculateIndicators(data) {
                     const len = data.length;
                     this.currentPrice = parseFloat(data[len - 1].close.toFixed(2));
 
-                    // 計算十年線 (約 2400 日)
                     if (len >= 2400) {
                         let sum = 0;
                         for(let i = len - 2400; i < len; i++) sum += data[i].close;
                         this.calc_ma120 = sum / 2400; 
-                    } else {
-                        this.calc_ma120 = 0; // 資料不足 10 年
-                    }
+                    } else this.calc_ma120 = 0; 
                     
-                    // 計算年線 (240 日)
                     if (len >= 240) {
                         let sum = 0;
                         for(let i = len - 240; i < len; i++) sum += data[i].close;
@@ -369,7 +337,6 @@
                     this.calc_k = k;
                 },
 
-                // 全自動帶入指標評分勾選框的狀態
                 autoCheckIndicators() {
                     if (this.calc_k > 0) this.cond_k = this.calc_k < 20;
                     if (this.calc_ma240 > 0) this.cond_ma240 = this.currentPrice < this.calc_ma240;
@@ -390,9 +357,10 @@
                     if (!isNaN(discount)) this.cond_discount = discount < 0;
                 },
 
-                // 自動扣款邏輯
+                // 全新支援多筆扣款的自動記帳邏輯
                 processAutoDeduct(historicalData) {
-                    if (!this.lastCheckDate || !this.investmentDates || this.baseAmount <= 0) return;
+                    // 如果沒有設定任何扣款計畫，就直接跳過
+                    if (!this.lastCheckDate || !this.investmentPlans || this.investmentPlans.length === 0) return;
 
                     const today = new Date();
                     today.setHours(0,0,0,0);
@@ -400,15 +368,15 @@
                     let lastCheck = new Date(this.lastCheckDate);
                     lastCheck.setHours(0,0,0,0);
 
+                    // 如果今天已經檢查過了，就不重複執行
                     if (lastCheck.getTime() >= today.getTime()) return;
 
-                    const deductDays = this.investmentDates.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 1 && d <= 31);
-                    if (deductDays.length === 0) return;
-
                     let logs = [];
+                    // 從上次檢查的隔天開始一天一天往後算，直到今天
                     let currentDate = new Date(lastCheck);
                     currentDate.setDate(currentDate.getDate() + 1);
 
+                    // 確保日期有大於使用者設定的「自動記帳啟動日」
                     let planStart = this.startDate ? new Date(this.startDate) : new Date(0);
                     planStart.setHours(0,0,0,0);
 
@@ -416,36 +384,44 @@
                     let addedCostTotal = 0;
 
                     while (currentDate <= today) {
-                        if (currentDate >= planStart && deductDays.includes(currentDate.getDate())) {
+                        if (currentDate >= planStart) {
+                            const todayDay = currentDate.getDate();
                             
-                            const targetTime = currentDate.getTime();
-                            let executedPrice = this.currentPrice;
-                            let executedTime = currentDate;
+                            // 檢查今天有沒有剛好命中哪一個扣款設定 (支援同一天可能設兩筆的極端狀況)
+                            const plansToday = this.investmentPlans.filter(p => parseInt(p.day) === todayDay && p.amount > 0);
+                            
+                            for (let plan of plansToday) {
+                                const targetTime = currentDate.getTime();
+                                let executedPrice = this.currentPrice;
+                                let executedTime = currentDate;
 
-                            for (let i = 0; i < historicalData.length; i++) {
-                                if (historicalData[i].time >= targetTime) {
-                                    executedPrice = historicalData[i].close;
-                                    executedTime = new Date(historicalData[i].time);
-                                    break;
+                                // 找出當天 (或遇假日順延的下一個交易日) 的收盤價
+                                for (let i = 0; i < historicalData.length; i++) {
+                                    if (historicalData[i].time >= targetTime) {
+                                        executedPrice = historicalData[i].close;
+                                        executedTime = new Date(historicalData[i].time);
+                                        break;
+                                    }
                                 }
+
+                                const sharesBought = Math.floor(plan.amount / executedPrice);
+                                const actualCost = sharesBought * executedPrice;
+
+                                addedSharesTotal += sharesBought;
+                                addedCostTotal += actualCost;
+
+                                let dateStr = currentDate.toLocaleDateString();
+                                if (executedTime.getTime() !== currentDate.getTime()) {
+                                    dateStr = `${dateStr} (順延至 ${executedTime.toLocaleDateString()})`;
+                                }
+
+                                logs.push(`📅 ${dateStr}：歷史收盤價 ${executedPrice.toFixed(2)} 元，買入 ${sharesBought} 股 (實扣 ${actualCost.toFixed(0)} 元) [依設定: ${plan.day}號扣${plan.amount}元]`);
                             }
-
-                            const sharesBought = Math.floor(this.baseAmount / executedPrice);
-                            const actualCost = sharesBought * executedPrice;
-
-                            addedSharesTotal += sharesBought;
-                            addedCostTotal += actualCost;
-
-                            let dateStr = currentDate.toLocaleDateString();
-                            if (executedTime.getTime() !== currentDate.getTime()) {
-                                dateStr = `${dateStr} (順延至 ${executedTime.toLocaleDateString()})`;
-                            }
-
-                            logs.push(`📅 ${dateStr}：歷史收盤價 ${executedPrice.toFixed(2)} 元，概估買入 ${sharesBought} 股 (實扣 ${actualCost.toFixed(0)} 元)`);
                         }
                         currentDate.setDate(currentDate.getDate() + 1);
                     }
 
+                    // 如果迴圈跑完有任何成功扣款的紀錄，就計算新的平均成本
                     if (logs.length > 0) {
                         let currentTotalCost = this.shares * this.avgCost;
                         let newTotalCost = currentTotalCost + addedCostTotal;
@@ -463,31 +439,27 @@
                     this.saveData();
                 },
 
-                // === 計算屬性：綜合評分系統 (依據所有手動/自動連動的勾選框計算) ===
                 get currentScore() {
                     let s = 0;
-                    
-                    // A. 技術面與趨勢
                     if (this.cond_k) s += 10;
                     if (this.cond_ma240) s += 15;
                     if (this.cond_ma120) s += 20;
-
-                    // B. 總體經濟與大盤價值
                     if (this.cond_pb) s += 15;
                     if (this.isBlueLight) s += 20;
-
-                    // C. 籌碼與情緒面
                     if (this.isPanic) s += 10;
-
-                    // D. 個人紀律與折溢價
                     if (this.cond_cost90) s += 5;
                     if (this.cond_cost80) s += 5;
                     if (this.cond_discount) s += 5;
-
-                    return Math.min(s, 100); // 滿分雖可達 105，但最高限制顯示 100 分
+                    return Math.min(s, 100); 
                 },
 
-                // 根據總分產生操作建議
+                // 為了雷達建議區塊，計算使用者的「平均每次扣款金額」作為基準
+                get averageBaseAmount() {
+                    if (!this.investmentPlans || this.investmentPlans.length === 0) return 0;
+                    const total = this.investmentPlans.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+                    return Math.round(total / this.investmentPlans.length);
+                },
+
                 get recommendation() {
                     const s = this.currentScore;
                     let mult = 0;
@@ -506,10 +478,9 @@
                         mult = 0.5; text = "逢低佈局區！短線超跌或小幅修正，可小額試水溫"; color="text-yellow-400"; bg="bg-yellow-900/40"; border="border-yellow-500/50";
                     }
 
-                    return { mult, text, color, bg, border, amount: this.baseAmount * mult };
+                    return { mult, text, color, bg, border, amount: this.averageBaseAmount * mult };
                 },
 
-                // === 計算屬性：基礎數值 ===
                 get totalCost() { return this.shares * this.avgCost; },
                 get marketValue() { return this.currentPrice <= 0 ? 0 : (this.shares * this.currentPrice).toFixed(0); },
                 get profit() { return (this.marketValue - this.totalCost).toFixed(0); },
@@ -524,8 +495,7 @@
                     const dataToSave = {
                         shares: this.shares,
                         avgCost: this.avgCost,
-                        baseAmount: this.baseAmount,
-                        investmentDates: this.investmentDates,
+                        investmentPlans: this.investmentPlans, // 儲存新版的扣款計畫清單
                         startDate: this.startDate,
                         lastCheckDate: this.lastCheckDate,
                         lastRemindedMonth: this.lastRemindedMonth,
@@ -542,29 +512,56 @@
                             const parsed = JSON.parse(saved);
                             this.shares = parsed.shares || 0;
                             this.avgCost = parsed.avgCost || 0;
-                            this.baseAmount = parsed.baseAmount || 10000;
-                            this.investmentDates = parsed.investmentDates || '15';
                             this.startDate = parsed.startDate || '';
                             this.lastCheckDate = parsed.lastCheckDate || null;
                             this.lastRemindedMonth = parsed.lastRemindedMonth || null;
                             this.isBlueLight = parsed.isBlueLight || false;
                             this.isPanic = parsed.isPanic || false;
-                        } catch (e) {}
+
+                            // === 無痛升級機制 ===
+                            // 如果發現使用者已經有新版的設定，就直接載入
+                            if (parsed.investmentPlans) {
+                                this.investmentPlans = parsed.investmentPlans;
+                            } 
+                            // 如果發現使用者還停留在舊版的「單一金額+多個逗號日期」，自動幫他轉換成新格式
+                            else if (parsed.investmentDates !== undefined && parsed.baseAmount !== undefined) {
+                                const days = parsed.investmentDates.toString().split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 1 && d <= 31);
+                                if(days.length > 0) {
+                                    this.investmentPlans = days.map((d, i) => ({ id: Date.now() + i, day: d, amount: parsed.baseAmount }));
+                                } else {
+                                    this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                                }
+                            } else {
+                                this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                            }
+
+                        } catch (e) {
+                            this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                        }
+                    } else {
+                        // 第一次使用的預設值
+                        this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
                     }
                 }
             }));
         });
     </script>
     
-    <!-- 引入 Alpine.js (必須加 defer，這是解決畫面空白的關鍵) -->
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 </head>
 <body class="bg-background text-slate-800 font-sans antialiased min-h-screen pb-20">
 
-    <!-- 加上 x-data 初始化應用程式，並用 x-cloak 隱藏直到準備完成 -->
     <div x-data="investmentApp" x-cloak class="max-w-4xl mx-auto pt-6 px-4 sm:px-6">
         
+        <!-- 全域訊息提示彈窗 -->
+        <div x-show="showMsgBox" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4" x-transition x-cloak>
+            <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center border border-slate-200">
+                <div class="text-lg font-bold text-slate-800 mb-6" x-text="msgBoxText"></div>
+                <button @click="showMsgBox = false" class="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition">確定</button>
+            </div>
+        </div>
+
         <!-- 自動扣款提醒彈窗 -->
         <div x-show="showLogs" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
@@ -627,7 +624,6 @@
         <!-- ==================== (分頁1) 主控台面版 ==================== -->
         <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
             
-            <!-- 月底對帳提醒橫幅 -->
             <div x-show="showUpdateReminder" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-xl shadow-sm relative" x-cloak x-transition>
                 <div class="flex items-start">
                     <i class="fa-solid fa-bell text-yellow-500 text-xl mt-1 mr-3"></i>
@@ -644,7 +640,6 @@
                 </div>
             </div>
 
-            <!-- 基本四大數據卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
                     <div>
@@ -669,12 +664,10 @@
                 </div>
             </div>
 
-            <!-- 動態加碼雷達與行動建議 -->
             <div class="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 md:p-8 mb-6 relative overflow-hidden text-white" x-transition>
                 <div class="absolute -top-6 -right-6 p-4 opacity-5 text-9xl"><i class="fa-solid fa-crosshairs"></i></div>
                 
                 <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-center relative z-10">
-                    <!-- 分數圓環/顯示區 -->
                     <div class="flex-shrink-0 text-center">
                         <div class="w-36 h-36 rounded-full border-4 flex items-center justify-center relative bg-slate-800 shadow-inner transition-colors duration-500"
                              :class="{'border-purple-500': currentScore >= 80, 'border-red-500': currentScore >= 60 && currentScore < 80, 'border-orange-500': currentScore >= 40 && currentScore < 60, 'border-yellow-500': currentScore >= 20 && currentScore < 40, 'border-emerald-500': currentScore < 20}">
@@ -683,7 +676,6 @@
                         </div>
                     </div>
 
-                    <!-- 建議文字區 -->
                     <div class="flex-1 w-full">
                         <h2 class="text-xl font-bold mb-3 flex items-center gap-2">
                             <i class="fa-solid fa-robot text-blue-400"></i> 系統綜合加碼建議
@@ -697,14 +689,13 @@
                                 <span class="text-sm text-slate-300">建議額外加碼金額：</span>
                                 <div>
                                     <span class="text-3xl font-black text-white drop-shadow-sm" x-text="recommendation.amount > 0 ? formatMoney(recommendation.amount) + ' 元' : '0 元'"></span>
-                                    <span class="text-sm text-slate-400 ml-1" x-show="recommendation.mult > 0" x-text="`(扣款本金的 ${recommendation.mult} 倍)`"></span>
+                                    <span class="text-sm text-slate-400 ml-1" x-show="recommendation.mult > 0" x-text="`(平日均扣本金的 ${recommendation.mult} 倍)`"></span>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 手動加分開關與全指標面板 -->
                 <div class="mt-5 border-t border-slate-700/50 pt-5 relative z-10">
                     <div class="text-sm text-slate-300 mb-3 flex items-center justify-between">
                         <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-500 ml-1 hidden sm:inline">(系統自動判定，您亦可點擊沙盤推演)</span></span>
@@ -712,7 +703,6 @@
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <!-- 技術面 -->
                         <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
                             <input type="checkbox" x-model="cond_k" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
                             <span class="flex-1">短線 K值 < 20</span>
@@ -728,8 +718,6 @@
                             <span class="flex-1">跌破十年線 (MA2400)</span>
                             <strong class="text-blue-400">+20分</strong>
                         </label>
-
-                        <!-- 總經與籌碼 -->
                         <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
                             <input type="checkbox" x-model="cond_pb" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
                             <span class="flex-1">大盤淨值比 < 1.6</span>
@@ -745,8 +733,6 @@
                             <span class="flex-1">市場極度恐慌/斷頭</span>
                             <strong class="text-blue-400">+10分</strong>
                         </label>
-
-                        <!-- 個人與折溢價 -->
                         <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-3 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition">
                             <input type="checkbox" x-model="cond_cost90" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
                             <span class="flex-1">市價低於均價 10%</span>
@@ -780,12 +766,10 @@
                 
                 <div class="p-6 space-y-8 text-slate-700 leading-relaxed">
                     
-                    <!-- 一、 技術面指標 -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">一、 技術面指標 (價格與動能)</h3>
                         
                         <div class="space-y-6 pl-2">
-                            <!-- 短線動能 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-bolt text-yellow-500"></i>短線狀態 (動能與情緒)</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 主要參考 KDJ 指標。KDJ 透過比較一段時間內的收盤價與最高/最低價，來衡量市場的「超買」或「超賣」情緒。當K值低於20時，代表近期股價在區間內接近低點，短線市場情緒偏悲觀，確實常出現反彈。但要留意，超跌不等於最低點，在空頭市場中，K值可能長時間停留在低檔，如果你一看到 K < 20 就把子彈打光，後續真正見到底部時，你反而沒錢加碼，這在心理上會造成巨大的挫折感。因此把 K < 20 當作「短線加碼參考」，是合理的，但不適合當作唯一依據。</p>
@@ -804,7 +788,6 @@
                                 </div>
                             </div>
 
-                            <!-- 中線趨勢 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-chart-line text-blue-500"></i>中線趨勢 (均線價值)</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 參考 240 日移動平均線 (年線)。年線代表了過去一年內所有買進這檔股票投資人的「平均成本」。MA240大約相當於一年的交易日均線，因此很多人會把它視為「長期趨勢線」。當價格跌破 MA240 時，通常意味著市場進入修正或空頭階段、投資情緒明顯轉弱。像 2022年全球升息循環時，台股就曾跌破長期均線。對長期投資人來說，跌破年線常代表一件事：市場已經出現明顯修正，是非常合理的加碼點。如果此時進行額外加碼，長期平均成本通常會下降，因此把「跌破 MA240」當作加碼參考，是相對合理的做法。</p>
@@ -822,7 +805,6 @@
                                 </div>
                             </div>
 
-                            <!-- 長線防線 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-purple-500"></i>長線防線 (十年線/極端支撐)</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 定期定額實務上，原本常看半年線 (120日均線) 作為防守關卡。但若拉長視角看月K線的MA120，代表大約10年的長期平均成本，也是所謂的「十年線」。這種長期均線很少被跌破，通常只有發生金融危機或全球性災難才會看到，例如2008年金融海嘯、2020年疫情股災。當市場跌到這個位置時，往往代表市場已經進入極度恐慌狀態。如果長期投資人有能力加碼，這往往是歷史上相對罕見的低點區域。但這種機會可能5～10年才出現一次，因此它更像是「極端加碼訊號」，而不是日常投資需要追蹤的指標。</p>
@@ -843,7 +825,6 @@
                                 </div>
                             </div>
                             
-                            <!-- 個人部位修正 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-user-tag text-teal-500"></i>個人部位修正</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 與大盤技術面無關，單純評估個人的持有成本。市價遠低於均價時加碼，能有效攤平、降低回本難度。</p>
@@ -863,7 +844,6 @@
                         </div>
                     </section>
 
-                    <!-- 二、 總體經濟與大盤 -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">二、 總體經濟與大盤指標 (基本面)</h3>
                         
@@ -902,7 +882,6 @@
                         </div>
                     </section>
 
-                    <!-- 三、 籌碼與交易面 -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">三、 籌碼與交易面指標 (情緒面)</h3>
                         <p class="text-xs text-slate-500 mb-4 pl-3">此區塊為極端市況的觀察輔助。</p>
@@ -953,7 +932,7 @@
             </div>
         </div>
 
-        <!-- ==================== (分頁3) 系統設定頁面 ==================== -->
+        <!-- ==================== (分頁3) 全新升級：系統設定頁面 ==================== -->
         <div x-show="activeTab === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
             
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-2xl mx-auto mb-10">
@@ -976,21 +955,61 @@
 
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
                         <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-calendar-check mr-2"></i>第二步：設定自動記帳規則</h3>
-                        <p class="text-xs text-slate-500 mb-4">設定完成後，系統會在經過扣款日時，自動將股數累加到您的庫存中。</p>
+                        <p class="text-xs text-slate-500 mb-4">您可以自由設定多筆扣款日與對應金額，系統會在經過扣款日時，自動將股數累加到庫存中。</p>
                         
                         <div class="space-y-4">
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">投資計畫起始日 (避免過往日期被重複扣除)</label>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">
+                                    自動記帳啟動日
+                                    <span class="text-xs text-slate-400 font-normal block mt-1">※ 告訴系統從哪天開始幫您自動記帳。請設定今天或未來的日期，避免舊庫存被重複計算。</span>
+                                </label>
                                 <input type="date" x-model="startDate" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
+
+                            <!-- 多筆扣款設定區塊 -->
+                            <div class="pt-2">
+                                <label class="block text-sm font-medium text-slate-600 mb-2">每月扣款日期與金額設定</label>
+                                <div class="space-y-3">
+                                    <template x-for="(plan, index) in investmentPlans" :key="plan.id">
+                                        <div class="flex items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                            <div class="flex-1 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                                <span class="text-sm text-slate-600 whitespace-nowrap">每月</span>
+                                                <input type="number" min="1" max="31" x-model.number="plan.day" class="w-16 px-2 py-1 text-center border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                                <span class="text-sm text-slate-600 whitespace-nowrap">號，扣款</span>
+                                                <input type="number" min="0" x-model.number="plan.amount" class="w-24 px-2 py-1 text-right border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                                <span class="text-sm text-slate-600 whitespace-nowrap">元</span>
+                                            </div>
+                                            <button @click="removePlan(plan.id)" class="text-slate-400 hover:text-red-500 p-2 transition" title="刪除此設定"><i class="fa-solid fa-trash-can"></i></button>
+                                        </div>
+                                    </template>
+                                    
+                                    <button @click="addPlan()" class="text-sm text-secondary hover:text-blue-700 font-bold flex items-center gap-1 mt-3 px-2 py-1 rounded hover:bg-blue-50 transition">
+                                        <i class="fa-solid fa-circle-plus"></i> 新增扣款日
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 第三步：單筆手動加碼工具 -->
+                    <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
+                        <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加碼 (不影響自動扣款設定)</h3>
+                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進，但又不想打亂每月的「自動記帳規則」時，可直接在此輸入單次買進的資料，系統會立刻為您重算平均成本。</p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">每次固定扣款金額 (元)</label>
-                                <input type="number" x-model.number="baseAmount" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">本次買入股數 (股)</label>
+                                <input type="number" x-model.number="manualShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">每月扣款日期 (以逗號分隔，例如：5,15,25)</label>
-                                <input type="text" x-model="investmentDates" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">本次成交單價 (元)</label>
+                                <input type="number" step="0.01" x-model.number="manualPrice" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 150.5">
                             </div>
+                        </div>
+                        <div class="mt-4 text-right">
+                            <button @click="executeManualAdd()" class="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition shadow-sm">
+                                <i class="fa-solid fa-calculator mr-1"></i> 計算並加入庫存
+                            </button>
                         </div>
                     </div>
 
