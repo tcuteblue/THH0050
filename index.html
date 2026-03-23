@@ -9,13 +9,13 @@
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="0050 雷達">
+    <meta name="apple-mobile-web-app-title" content="0050投資建議">
     
     <!-- 指定 iOS 桌面圖示 -->
     <link rel="apple-touch-icon" href="./icon.png">
     
     <!-- 指定 Android / PWA 桌面圖示與設定 -->
-    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%20%E6%8A%95%E8%B3%87%E9%9B%B7%E9%81%94%22%2C%22short_name%22%3A%220050%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
     <!-- 引入 Tailwind CSS 與設定 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -47,6 +47,9 @@
         /* x-cloak 會在 Alpine 初始化完成後自動移除，防止畫面閃爍 */
         [x-cloak] { display: none !important; }
         .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
+        /* 隱藏滾動條以美化標籤列橫向滑動 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 
     <!-- 確保 Alpine.js 元件在核心載入前註冊完成 -->
@@ -54,7 +57,7 @@
         document.addEventListener('alpine:init', () => {
             Alpine.data('investmentApp', () => ({
                 // === 頁面導航 ===
-                activeTab: 'dashboard', // 'dashboard' (主控台) 或是 'settings' (設定)
+                activeTab: 'dashboard', // 'dashboard' (主控台), 'report' (報告), 或是 'settings' (設定)
 
                 // === 基本資料 (設定頁) ===
                 shares: 0,
@@ -583,7 +586,7 @@
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-4">
                 <div>
                     <h1 class="text-2xl sm:text-3xl font-black text-primary flex flex-wrap items-baseline gap-2">
-                        <span><i class="fa-solid fa-layer-group"></i> 0050 投資與加碼雷達</span>
+                        <span><i class="fa-solid fa-layer-group"></i> 0050 投資建議</span>
                         <span class="text-xs sm:text-sm font-normal text-slate-400">蔡宏和製作20260323</span>
                     </h1>
                     <p class="text-sm text-slate-500 mt-1">深度市場洞察與自動化記帳系統</p>
@@ -598,14 +601,18 @@
                 </div>
             </div>
 
-            <div class="flex border-b border-slate-200">
-                <button @click="activeTab = 'dashboard'" class="tab-btn px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'dashboard'}">
-                    <i class="fa-solid fa-chart-pie mr-2"></i>主控台與報告
+            <!-- 分成三個標籤，並允許橫向滑動避免擁擠 -->
+            <div class="flex border-b border-slate-200 overflow-x-auto no-scrollbar whitespace-nowrap">
+                <button @click="activeTab = 'dashboard'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'dashboard'}">
+                    <i class="fa-solid fa-chart-pie mr-2"></i>主控台
                 </button>
-                <button @click="activeTab = 'settings'" class="tab-btn px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'settings'}">
+                <button @click="activeTab = 'report'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'report'}">
+                    <i class="fa-solid fa-book-open mr-2"></i>深度報告
+                </button>
+                <button @click="activeTab = 'settings'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'settings'}">
                     <i class="fa-solid fa-gear mr-2"></i>系統設定
                 </button>
-                <div class="ml-auto flex items-center pr-2">
+                <div class="ml-auto flex items-center pl-2 pr-2">
                     <button x-show="showInstallBtn" @click="installApp" class="hidden sm:inline-flex items-center justify-center px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak>
                         <i class="fa-solid fa-download mr-2"></i>安裝 APP
                     </button>
@@ -617,10 +624,10 @@
             </button>
         </header>
 
-        <!-- ==================== 主控台與報告頁面 ==================== -->
+        <!-- ==================== (分頁1) 主控台面版 ==================== -->
         <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
             
-            <!-- 月底對帳提醒橫幅 (當超過本月最後扣款日且尚未點擊確認時顯示) -->
+            <!-- 月底對帳提醒橫幅 -->
             <div x-show="showUpdateReminder" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-xl shadow-sm relative" x-cloak x-transition>
                 <div class="flex items-start">
                     <i class="fa-solid fa-bell text-yellow-500 text-xl mt-1 mr-3"></i>
@@ -628,7 +635,7 @@
                         <h3 class="text-sm font-bold text-yellow-800">溫馨提醒：本月扣款已全數完成</h3>
                         <p class="text-sm text-yellow-700 mt-1 pr-6 leading-relaxed">
                             目前系統為自動運算之概估值，與券商實際交易手續費可能有些許誤差。<br>
-                            建議您現在登入券商軟體對帳，並前往「<button @click="activeTab = 'settings'; dismissReminder();" class="underline font-bold text-yellow-800 hover:text-yellow-600">系統設定</button>」微調您的「現有庫存股數」與「平均成本」，以保持計算的精準度！
+                            建議您現在登入券商軟體對帳，並前往「<button @click="activeTab = 'settings'; dismissReminder();" class="underline font-bold text-yellow-800 hover:text-yellow-600">系統設定</button>」微調庫存，保持精準度！
                         </p>
                     </div>
                     <button @click="dismissReminder()" class="text-yellow-500 hover:text-yellow-700 p-1 absolute top-3 right-3">
@@ -700,7 +707,8 @@
                 <!-- 手動加分開關與全指標面板 -->
                 <div class="mt-5 border-t border-slate-700/50 pt-5 relative z-10">
                     <div class="text-sm text-slate-300 mb-3 flex items-center justify-between">
-                        <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-500 ml-1 hidden sm:inline">(系統自動判定，您亦可點擊勾選框進行沙盤推演)</span></span>
+                        <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-500 ml-1 hidden sm:inline">(系統自動判定，您亦可點擊沙盤推演)</span></span>
+                        <button @click="activeTab = 'report'" class="text-xs text-blue-400 hover:text-blue-300 underline">查看各指標詳細解說 >></button>
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -757,19 +765,22 @@
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- 動態深度投資報告 -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <!-- ==================== (分頁2) 深度報告頁面 ==================== -->
+        <div x-show="activeTab === 'report'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-10">
                 <div class="bg-slate-50 border-b border-slate-200 p-5">
                     <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
                         <i class="fa-solid fa-book-open text-secondary"></i> 0050 深度投資洞察報告
                     </h2>
-                    <p class="text-sm text-slate-500 mt-1">此報告結合目前真實數據與技術原理解說，為您剖析當下是否為加碼良機。</p>
+                    <p class="text-sm text-slate-500 mt-1">此報告結合目前真實數據與技術原理解說，為您剖析當下各項指標狀態。</p>
                 </div>
                 
                 <div class="p-6 space-y-8 text-slate-700 leading-relaxed">
                     
-                    <!-- 一、 技術面指標 (動態資料整合) -->
+                    <!-- 一、 技術面指標 -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">一、 技術面指標 (價格與動能)</h3>
                         
@@ -852,7 +863,7 @@
                         </div>
                     </section>
 
-                    <!-- 二、 總體經濟與大盤 (靜態觀察指引) -->
+                    <!-- 二、 總體經濟與大盤 -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">二、 總體經濟與大盤指標 (基本面)</h3>
                         
@@ -891,7 +902,7 @@
                         </div>
                     </section>
 
-                    <!-- 三、 籌碼與交易面 (靜態觀察指引) -->
+                    <!-- 三、 籌碼與交易面 -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">三、 籌碼與交易面指標 (情緒面)</h3>
                         <p class="text-xs text-slate-500 mb-4 pl-3">此區塊為極端市況的觀察輔助。</p>
@@ -899,7 +910,7 @@
                         <div class="space-y-6 pl-2">
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-water text-cyan-500"></i>市場恐慌度 (大盤融資餘額)</h4>
-                                <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 觀察散戶的「融資餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
+                                <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 觀察散戶的「融撿餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
                                 <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
 
                                 <div class="p-3 bg-white rounded-lg border border-slate-200">
@@ -938,12 +949,11 @@
                             </div>
                         </div>
                     </section>
-
                 </div>
             </div>
         </div>
 
-        <!-- ==================== 系統設定頁面 ==================== -->
+        <!-- ==================== (分頁3) 系統設定頁面 ==================== -->
         <div x-show="activeTab === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
             
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-2xl mx-auto mb-10">
