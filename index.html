@@ -57,6 +57,10 @@
                 lastCheckDate: null,
                 lastRemindedMonth: null, // 記錄上次提醒修改庫存的月份
                 
+                // === 手動加分項 ===
+                isBlueLight: false, // 景氣藍燈
+                isPanic: false,     // 市場極度恐慌
+
                 // === 市場資料與計算 ===
                 currentPrice: 0,
                 isFetching: false,
@@ -104,6 +108,8 @@
                     this.$watch('baseAmount', () => this.saveData());
                     this.$watch('investmentDates', () => this.saveData());
                     this.$watch('startDate', () => this.saveData());
+                    this.$watch('isBlueLight', () => this.saveData());
+                    this.$watch('isPanic', () => this.saveData());
                 },
 
                 // 檢查是否需要提醒對帳 (超過本月最後一個扣款日)
@@ -414,7 +420,60 @@
                     this.saveData();
                 },
 
-                // === 計算屬性 ===
+                // === 計算屬性：綜合評分系統 ===
+                get currentScore() {
+                    if (!this.historicalDataLoaded || this.currentPrice === 0) return 0;
+                    
+                    let s = 0;
+                    
+                    // A. 技術面與趨勢 (最高45分)
+                    if (this.calc_k < 20) s += 10;
+                    if (this.calc_ma240 > 0 && this.currentPrice < this.calc_ma240) s += 15;
+                    if (this.calc_ma120 > 0 && this.currentPrice < this.calc_ma120) s += 20;
+
+                    // B. 總體經濟與大盤價值 (最高35分)
+                    let pb = parseFloat(this.pbRatio);
+                    if (!isNaN(pb) && pb < 1.6) s += 15;
+                    if (this.isBlueLight) s += 20;
+
+                    // C. 籌碼與情緒面 (最高10分)
+                    if (this.isPanic) s += 10;
+
+                    // D. 個人紀律與折溢價 (滿分10分，最高可得15分加分)
+                    if (this.avgCost > 0) {
+                        if (this.currentPrice <= this.avgCost * 0.9) s += 5;
+                        if (this.currentPrice <= this.avgCost * 0.8) s += 5;
+                    }
+                    
+                    let discount = parseFloat(this.etfDiscount);
+                    if (!isNaN(discount) && discount < 0) s += 5; // 折價加分
+
+                    return Math.min(s, 100); // 最高限制顯示 100 分
+                },
+
+                // 根據總分產生操作建議
+                get recommendation() {
+                    const s = this.currentScore;
+                    let mult = 0;
+                    let text = "維持原定期定額，保持紀律";
+                    let color = "text-emerald-400";
+                    let bg = "bg-emerald-400/10";
+                    let border = "border-emerald-500/30";
+
+                    if (s >= 80) { 
+                        mult = 3.0; text = "歷史重壓區！千載難逢，強烈建議大舉加碼或動用儲備金"; color="text-purple-400"; bg="bg-purple-900/40"; border="border-purple-500/50";
+                    } else if (s >= 60) { 
+                        mult = 2.0; text = "恐慌超跌區！多項空頭指標觸發，大舉買進"; color="text-red-400"; bg="bg-red-900/40"; border="border-red-500/50";
+                    } else if (s >= 40) { 
+                        mult = 1.0; text = "價值浮現區！中線趨勢轉弱或總經低迷，值得投入"; color="text-orange-400"; bg="bg-orange-900/40"; border="border-orange-500/50";
+                    } else if (s >= 20) { 
+                        mult = 0.5; text = "逢低佈局區！短線超跌或小幅修正，可小額試水溫"; color="text-yellow-400"; bg="bg-yellow-900/40"; border="border-yellow-500/50";
+                    }
+
+                    return { mult, text, color, bg, border, amount: this.baseAmount * mult };
+                },
+
+                // === 計算屬性：基礎數值 ===
                 get totalCost() { return this.shares * this.avgCost; },
                 get marketValue() { return this.currentPrice <= 0 ? 0 : (this.shares * this.currentPrice).toFixed(0); },
                 get profit() { return (this.marketValue - this.totalCost).toFixed(0); },
@@ -433,7 +492,9 @@
                         investmentDates: this.investmentDates,
                         startDate: this.startDate,
                         lastCheckDate: this.lastCheckDate,
-                        lastRemindedMonth: this.lastRemindedMonth
+                        lastRemindedMonth: this.lastRemindedMonth,
+                        isBlueLight: this.isBlueLight,
+                        isPanic: this.isPanic
                     };
                     localStorage.setItem('THH0050_Data_V3', JSON.stringify(dataToSave));
                 },
@@ -450,6 +511,8 @@
                             this.startDate = parsed.startDate || '';
                             this.lastCheckDate = parsed.lastCheckDate || null;
                             this.lastRemindedMonth = parsed.lastRemindedMonth || null;
+                            this.isBlueLight = parsed.isBlueLight || false;
+                            this.isPanic = parsed.isPanic || false;
                         } catch (e) {}
                     }
                 }
@@ -541,6 +604,7 @@
                 </div>
             </div>
 
+            <!-- 基本四大數據卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
                     <div>
@@ -560,6 +624,54 @@
                         <div class="text-xl font-black flex items-baseline gap-1" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'">
                             <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
                             <span class="text-sm font-bold" x-show="roi !== null" x-text="'(' + roi + '%)'"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 動態加碼雷達與行動建議 (新增) -->
+            <div class="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-6 md:p-8 mb-6 relative overflow-hidden text-white" x-show="historicalDataLoaded" x-transition>
+                <div class="absolute -top-6 -right-6 p-4 opacity-5 text-9xl"><i class="fa-solid fa-crosshairs"></i></div>
+                
+                <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-center relative z-10">
+                    <!-- 分數圓環/顯示區 -->
+                    <div class="flex-shrink-0 text-center">
+                        <div class="w-36 h-36 rounded-full border-4 flex items-center justify-center relative bg-slate-800 shadow-inner transition-colors duration-500"
+                             :class="{'border-purple-500': currentScore >= 80, 'border-red-500': currentScore >= 60 && currentScore < 80, 'border-orange-500': currentScore >= 40 && currentScore < 60, 'border-yellow-500': currentScore >= 20 && currentScore < 40, 'border-emerald-500': currentScore < 20}">
+                            <div class="text-5xl font-black" x-text="currentScore"></div>
+                            <div class="absolute bottom-3 text-sm text-slate-400 font-medium">/ 100 分</div>
+                        </div>
+                    </div>
+
+                    <!-- 建議文字區 -->
+                    <div class="flex-1 w-full">
+                        <h2 class="text-xl font-bold mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-robot text-blue-400"></i> 系統綜合加碼建議
+                        </h2>
+                        
+                        <div class="p-5 rounded-xl border mb-4 shadow-sm transition-colors duration-500" :class="`${recommendation.bg} ${recommendation.border}`">
+                            <div class="text-sm text-slate-300 mb-1">目前市場位階判斷：</div>
+                            <div class="text-lg md:text-xl font-bold mb-3" :class="recommendation.color" x-text="recommendation.text"></div>
+                            
+                            <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 border-t border-slate-700/50 pt-3">
+                                <span class="text-sm text-slate-300">建議額外加碼金額：</span>
+                                <div>
+                                    <span class="text-3xl font-black text-white drop-shadow-sm" x-text="recommendation.amount > 0 ? formatMoney(recommendation.amount) + ' 元' : '0 元'"></span>
+                                    <span class="text-sm text-slate-400 ml-1" x-show="recommendation.mult > 0" x-text="`(扣款本金的 ${recommendation.mult} 倍)`"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 手動加分開關 -->
+                        <div class="flex flex-col sm:flex-row gap-3 mt-2">
+                            <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-4 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition w-full sm:w-auto">
+                                <input type="checkbox" x-model="isBlueLight" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                                <span>景氣燈號為藍燈 <strong class="text-blue-400 ml-1">+20分</strong></span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-slate-300 bg-slate-800 px-4 py-2.5 rounded-xl border border-slate-700 cursor-pointer hover:bg-slate-700 transition w-full sm:w-auto">
+                                <input type="checkbox" x-model="isPanic" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                                <span>市場極度恐慌/斷頭 <strong class="text-blue-400 ml-1">+10分</strong></span>
+                            </label>
                         </div>
                     </div>
                 </div>
