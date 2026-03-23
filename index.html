@@ -37,7 +37,11 @@
     
     <!-- 自訂樣式 -->
     <style>
-        input[type="text"], input[type="number"], input[type="date"] { font-size: 16px; }
+        /* 將基礎字體從預設的 16px 放大 4 級至 20px，讓整個系統等比例全局放大 */
+        html { font-size: 20px; }
+        
+        /* 調整輸入框字體，避免小於 16px 觸發 iOS 縮放，同時跟隨系統全局放大 */
+        input[type="text"], input[type="number"], input[type="date"] { font-size: 1rem; }
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         /* x-cloak 會在 Alpine 初始化完成後自動移除，防止畫面閃爍 */
