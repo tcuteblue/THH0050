@@ -2,11 +2,9 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <!-- 設定網頁在手機上正確縮放，避免畫面變形 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>0050 定期定額與加碼策略系統</title>
     
-    <!-- ==================== PWA 與 APP 安裝設定區 ==================== -->
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -14,7 +12,6 @@
     <link rel="apple-touch-icon" href="./icon.png">
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
-    <!-- ==================== 外部資源引入區 ==================== -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         try {
@@ -29,7 +26,6 @@
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- ==================== 自訂樣式設定區 ==================== -->
     <style>
         html { font-size: 20px; }
         input[type="text"], input[type="number"], input[type="date"] { font-size: 1rem; }
@@ -41,21 +37,18 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 
-    <!-- ==================== 核心程式邏輯區 (使用 Alpine.js) ==================== -->
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('investmentApp', () => ({
                 
                 activeTab: 'dashboard', 
 
-                // [使用者資料變數]
                 shares: 0,              
                 avgCost: 0,             
                 startDate: '',          
                 lastCheckDate: null,    
                 lastRemindedMonth: null,
                 
-                // [全新升級：支援多筆不同日期的扣款設定]
                 investmentPlans: [],
 
                 // [單筆手動加碼變數]
@@ -66,7 +59,6 @@
                 showMsgBox: false,
                 msgBoxText: '',
 
-                // [計分指標變數]
                 cond_k: false,        
                 cond_ma240: false,    
                 cond_ma120: false,    
@@ -77,9 +69,9 @@
                 cond_cost80: false,   
                 cond_discount: false, 
 
-                // [市場資料與計算]
                 currentPrice: 0,
                 isFetching: false,
+                realTimeFetched: false, // 標記是否成功抓到盤中即時價
                 historicalDataLoaded: false,
                 calc_k: 0,
                 calc_ma120: 0, 
@@ -89,16 +81,13 @@
                 marginBalance: null, 
                 etfDiscount: null,
 
-                // [扣款與提醒日誌]
                 showLogs: false,
                 newLogs: [],
                 showUpdateReminder: false,
 
-                // [APP 安裝]
                 deferredPrompt: null,
                 showInstallBtn: false,
 
-                // 程式初始化
                 init() {
                     this.loadData();
                     if (!this.lastCheckDate) {
@@ -110,14 +99,12 @@
                         this.checkReminder();
                     });
 
-                    // 攔截 PWA 安裝提示
                     window.addEventListener('beforeinstallprompt', (e) => {
                         e.preventDefault();
                         this.deferredPrompt = e;
                         this.showInstallBtn = true;
                     });
 
-                    // 監聽變動，隨時存檔
                     this.$watch('shares', () => this.saveData());
                     this.$watch('avgCost', () => {
                         this.saveData();
@@ -129,20 +116,17 @@
                     this.$watch('startDate', () => this.saveData());
                     this.$watch('isBlueLight', () => this.saveData());
                     this.$watch('isPanic', () => this.saveData());
-                    // 深度監聽扣款計畫陣列的變化 (新增、修改、刪除)
                     this.$watch('investmentPlans', () => this.saveData(), { deep: true });
                 },
 
-                // 新增一筆扣款計畫
                 addPlan() {
                     this.investmentPlans.push({
                         id: Date.now(),
-                        day: 15, // 預設 15 號
-                        amount: 10000 // 預設 1 萬元
+                        day: 15,
+                        amount: 10000
                     });
                 },
 
-                // 刪除一筆扣款計畫
                 removePlan(id) {
                     this.investmentPlans = this.investmentPlans.filter(p => p.id !== id);
                 },
@@ -161,7 +145,6 @@
                     this.shares += this.manualShares;
                     this.avgCost = parseFloat((newTotalCost / this.shares).toFixed(2));
                     
-                    // 清空輸入框並存檔
                     this.manualShares = null;
                     this.manualPrice = null;
                     this.saveData();
@@ -170,7 +153,6 @@
                     this.showMsgBox = true;
                 },
 
-                // 檢查是否需要提醒對帳 (超過本月最後一個扣款日)
                 checkReminder() {
                     if (!this.investmentPlans || this.investmentPlans.length === 0) return;
                     
@@ -186,7 +168,6 @@
                     }
                 },
 
-                // 關閉對帳提醒並記錄
                 dismissReminder() {
                     const today = new Date();
                     this.lastRemindedMonth = `${today.getFullYear()}-${today.getMonth()}`;
@@ -194,7 +175,6 @@
                     this.saveData();
                 },
 
-                // 處理 APP 安裝
                 async installApp() {
                     if (this.deferredPrompt) {
                         this.deferredPrompt.prompt();
@@ -208,12 +188,44 @@
                     }
                 },
 
-                // 核心：取得歷史資料、計算指標並處理自動扣款
+                // 新增：抓取盤中即時報價 (Real-time Price)
+                async fetchRealTimePrice() {
+                    try {
+                        const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW';
+                        const proxies = [
+                            'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
+                            'https://corsproxy.io/?' + encodeURIComponent(yfUrl)
+                        ];
+
+                        for (let proxy of proxies) {
+                            try {
+                                const response = await fetch(proxy);
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                                        const meta = data.chart.result[0].meta;
+                                        // 取得盤中即時市價 (regularMarketPrice)
+                                        if (meta && meta.regularMarketPrice) {
+                                            this.currentPrice = parseFloat(meta.regularMarketPrice.toFixed(2));
+                                            this.realTimeFetched = true;
+                                            return; // 成功抓到即時市價就提早結束
+                                        }
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                    } catch (error) {}
+                },
+
                 async fetchDataAndProcess() {
                     if (this.isFetching) return;
                     this.isFetching = true;
                     let historicalData = [];
 
+                    // 1. 優先嘗試抓取盤中即時市價
+                    await this.fetchRealTimePrice();
+
+                    // 2. 抓取歷史資料供技術指標與自動扣款運算
                     try {
                         const d = new Date();
                         d.setFullYear(d.getFullYear() - 12); 
@@ -228,6 +240,7 @@
                         }
                     } catch (e) { console.warn("FinMind API 失敗，切換備援方案...", e); }
 
+                    // 如果 FinMind 失敗，使用 Yahoo 歷史資料備援
                     if (historicalData.length === 0) {
                         try {
                             const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
@@ -254,6 +267,7 @@
                         } catch (error) {}
                     }
 
+                    // 3. 抓取其他輔助指標 (淨值比、融資餘額、折溢價)
                     try {
                         const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                         if(pbRes.ok) {
@@ -284,19 +298,24 @@
                         } else this.etfDiscount = 'API阻擋';
                     } catch(e) { this.etfDiscount = 'API阻擋'; }
 
+                    // 4. 計算指標與檢查自動扣款
                     if (historicalData.length > 0) {
                         this.historicalDataLoaded = true;
                         this.calculateIndicators(historicalData);
                         this.processAutoDeduct(historicalData);
                     } else {
-                        await this.fetchCurrentPrice();
+                        // 如果歷史資料全掛，且前面也沒抓到即時股價，最後才去證交所撈昨日收盤價墊檔
+                        if (!this.realTimeFetched || this.currentPrice <= 0) {
+                            await this.fetchTWSEPrice();
+                        }
                     }
 
                     this.autoCheckIndicators();
                     this.isFetching = false;
                 },
 
-                async fetchCurrentPrice() {
+                // 備用方案：證交所昨日收盤價
+                async fetchTWSEPrice() {
                     try {
                         const twseResponse = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
                         if (twseResponse.ok) {
@@ -309,20 +328,27 @@
 
                 calculateIndicators(data) {
                     const len = data.length;
-                    this.currentPrice = parseFloat(data[len - 1].close.toFixed(2));
+                    
+                    // 【關鍵邏輯】如果前面即時股價抓取失敗，才將 currentPrice 退回使用歷史陣列的最後一筆
+                    if (!this.realTimeFetched || this.currentPrice <= 0) {
+                        this.currentPrice = parseFloat(data[len - 1].close.toFixed(2));
+                    }
 
+                    // 計算十年線 (約 2400 日)
                     if (len >= 2400) {
                         let sum = 0;
                         for(let i = len - 2400; i < len; i++) sum += data[i].close;
                         this.calc_ma120 = sum / 2400; 
                     } else this.calc_ma120 = 0; 
                     
+                    // 計算年線 (240 日)
                     if (len >= 240) {
                         let sum = 0;
                         for(let i = len - 240; i < len; i++) sum += data[i].close;
                         this.calc_ma240 = sum / 240;
                     }
 
+                    // 計算 KDJ 動能指標
                     let k = 50, d = 50;
                     for (let i = 8; i < len; i++) {
                         let highest = -Infinity, lowest = Infinity;
@@ -357,9 +383,7 @@
                     if (!isNaN(discount)) this.cond_discount = discount < 0;
                 },
 
-                // 全新支援多筆扣款的自動記帳邏輯
                 processAutoDeduct(historicalData) {
-                    // 如果沒有設定任何扣款計畫，就直接跳過
                     if (!this.lastCheckDate || !this.investmentPlans || this.investmentPlans.length === 0) return;
 
                     const today = new Date();
@@ -368,15 +392,12 @@
                     let lastCheck = new Date(this.lastCheckDate);
                     lastCheck.setHours(0,0,0,0);
 
-                    // 如果今天已經檢查過了，就不重複執行
                     if (lastCheck.getTime() >= today.getTime()) return;
 
                     let logs = [];
-                    // 從上次檢查的隔天開始一天一天往後算，直到今天
                     let currentDate = new Date(lastCheck);
                     currentDate.setDate(currentDate.getDate() + 1);
 
-                    // 確保日期有大於使用者設定的「自動記帳啟動日」
                     let planStart = this.startDate ? new Date(this.startDate) : new Date(0);
                     planStart.setHours(0,0,0,0);
 
@@ -386,8 +407,6 @@
                     while (currentDate <= today) {
                         if (currentDate >= planStart) {
                             const todayDay = currentDate.getDate();
-                            
-                            // 檢查今天有沒有剛好命中哪一個扣款設定 (支援同一天可能設兩筆的極端狀況)
                             const plansToday = this.investmentPlans.filter(p => parseInt(p.day) === todayDay && p.amount > 0);
                             
                             for (let plan of plansToday) {
@@ -395,7 +414,6 @@
                                 let executedPrice = this.currentPrice;
                                 let executedTime = currentDate;
 
-                                // 找出當天 (或遇假日順延的下一個交易日) 的收盤價
                                 for (let i = 0; i < historicalData.length; i++) {
                                     if (historicalData[i].time >= targetTime) {
                                         executedPrice = historicalData[i].close;
@@ -421,7 +439,6 @@
                         currentDate.setDate(currentDate.getDate() + 1);
                     }
 
-                    // 如果迴圈跑完有任何成功扣款的紀錄，就計算新的平均成本
                     if (logs.length > 0) {
                         let currentTotalCost = this.shares * this.avgCost;
                         let newTotalCost = currentTotalCost + addedCostTotal;
@@ -453,7 +470,6 @@
                     return Math.min(s, 100); 
                 },
 
-                // 為了雷達建議區塊，計算使用者的「平均每次扣款金額」作為基準
                 get averageBaseAmount() {
                     if (!this.investmentPlans || this.investmentPlans.length === 0) return 0;
                     const total = this.investmentPlans.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
@@ -495,7 +511,7 @@
                     const dataToSave = {
                         shares: this.shares,
                         avgCost: this.avgCost,
-                        investmentPlans: this.investmentPlans, // 儲存新版的扣款計畫清單
+                        investmentPlans: this.investmentPlans, 
                         startDate: this.startDate,
                         lastCheckDate: this.lastCheckDate,
                         lastRemindedMonth: this.lastRemindedMonth,
@@ -518,12 +534,9 @@
                             this.isBlueLight = parsed.isBlueLight || false;
                             this.isPanic = parsed.isPanic || false;
 
-                            // === 無痛升級機制 ===
-                            // 如果發現使用者已經有新版的設定，就直接載入
                             if (parsed.investmentPlans) {
                                 this.investmentPlans = parsed.investmentPlans;
                             } 
-                            // 如果發現使用者還停留在舊版的「單一金額+多個逗號日期」，自動幫他轉換成新格式
                             else if (parsed.investmentDates !== undefined && parsed.baseAmount !== undefined) {
                                 const days = parsed.investmentDates.toString().split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 1 && d <= 31);
                                 if(days.length > 0) {
@@ -539,7 +552,6 @@
                             this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
                         }
                     } else {
-                        // 第一次使用的預設值
                         this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
                     }
                 }
@@ -554,7 +566,6 @@
 
     <div x-data="investmentApp" x-cloak class="max-w-4xl mx-auto pt-6 px-4 sm:px-6">
         
-        <!-- 全域訊息提示彈窗 -->
         <div x-show="showMsgBox" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center border border-slate-200">
                 <div class="text-lg font-bold text-slate-800 mb-6" x-text="msgBoxText"></div>
@@ -562,7 +573,6 @@
             </div>
         </div>
 
-        <!-- 自動扣款提醒彈窗 -->
         <div x-show="showLogs" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
                 <div class="flex items-center gap-3 text-green-600 mb-4">
@@ -598,7 +608,6 @@
                 </div>
             </div>
 
-            <!-- 分成三個標籤，並允許橫向滑動避免擁擠 -->
             <div class="flex border-b border-slate-200 overflow-x-auto no-scrollbar whitespace-nowrap">
                 <button @click="activeTab = 'dashboard'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'dashboard'}">
                     <i class="fa-solid fa-chart-pie mr-2"></i>主控台
@@ -615,13 +624,11 @@
                     </button>
                 </div>
             </div>
-            <!-- 手機版獨立顯示安裝按鈕 -->
             <button x-show="showInstallBtn" @click="installApp" class="w-full mt-3 sm:hidden inline-flex items-center justify-center px-4 py-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak>
                 <i class="fa-solid fa-download mr-2"></i>安裝 APP 至手機桌面
             </button>
         </header>
 
-        <!-- ==================== (分頁1) 主控台面版 ==================== -->
         <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
             
             <div x-show="showUpdateReminder" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-xl shadow-sm relative" x-cloak x-transition>
@@ -753,7 +760,6 @@
             </div>
         </div>
 
-        <!-- ==================== (分頁2) 深度報告頁面 ==================== -->
         <div x-show="activeTab === 'report'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
             
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-10">
@@ -932,7 +938,6 @@
             </div>
         </div>
 
-        <!-- ==================== (分頁3) 全新升級：系統設定頁面 ==================== -->
         <div x-show="activeTab === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
             
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-2xl mx-auto mb-10">
@@ -966,7 +971,6 @@
                                 <input type="date" x-model="startDate" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
 
-                            <!-- 多筆扣款設定區塊 -->
                             <div class="pt-2">
                                 <label class="block text-sm font-medium text-slate-600 mb-2">每月扣款日期與金額設定</label>
                                 <div class="space-y-3">
@@ -991,7 +995,6 @@
                         </div>
                     </div>
 
-                    <!-- 第三步：單筆手動加碼工具 -->
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
                         <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加碼 (不影響自動扣款設定)</h3>
                         <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進，但又不想打亂每月的「自動記帳規則」時，可直接在此輸入單次買進的資料，系統會立刻為您重算平均成本。</p>
@@ -1014,8 +1017,8 @@
                     </div>
 
                     <div class="text-center pt-4">
-                        <button @click="activeTab = 'dashboard'" class="px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition shadow-md">
-                            儲存並返回主控台
+                        <button @click="activeTab = 'dashboard'; window.location.reload();" class="px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition shadow-md">
+                            儲存並重新運算 (返回主控台)
                         </button>
                     </div>
                 </div>
@@ -1024,7 +1027,6 @@
 
     </div>
 
-    <!-- PWA 虛擬 Service Worker 註冊 (滿足 Android Chrome 安裝條件) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
