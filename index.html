@@ -28,13 +28,18 @@
     
     <style>
         html { font-size: 20px; }
-        input[type="text"], input[type="number"], input[type="date"] { font-size: 1rem; }
+        input[type="text"], input[type="number"], input[type="date"], select { font-size: 1rem; }
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         [x-cloak] { display: none !important; }
         .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* 歷史明細列表捲動條 */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 
     <script>
@@ -43,17 +48,21 @@
                 
                 activeTab: 'dashboard', 
 
-                shares: 0,              
-                avgCost: 0,             
+                baseShares: 0,          // 期初庫存
+                baseAvgCost: 0,         // 期初成本
                 startDate: '',          
                 lastCheckDate: null,    
                 lastRemindedMonth: null,
                 
                 investmentPlans: [],
+                transactions: [],       // 完整歷史交易明細，用於精算 XIRR
 
-                // [單筆手動加碼變數]
+                // [單筆手動加減碼變數]
+                manualDate: new Date().toISOString().split('T')[0], 
+                manualAction: 'buy',    // buy/sell/dividend
                 manualShares: null,
                 manualPrice: null,
+                manualAmount: null,     // 配息專用總金額
 
                 // [全域訊息彈窗]
                 showMsgBox: false,
@@ -71,7 +80,7 @@
 
                 currentPrice: 0,
                 isFetching: false,
-                realTimeFetched: false, // 標記是否成功抓到盤中即時價
+                realTimeFetched: false,
                 historicalDataLoaded: false,
                 calc_k: 0,
                 calc_ma120: 0, 
@@ -105,18 +114,19 @@
                         this.showInstallBtn = true;
                     });
 
-                    this.$watch('shares', () => this.saveData());
-                    this.$watch('avgCost', () => {
+                    this.$watch('baseShares', () => this.saveData());
+                    this.$watch('baseAvgCost', () => {
                         this.saveData();
-                        if (this.avgCost > 0 && this.currentPrice > 0) {
-                            this.cond_cost90 = this.currentPrice <= this.avgCost * 0.9;
-                            this.cond_cost80 = this.currentPrice <= this.avgCost * 0.8;
+                        if (this.currentAvgCost > 0 && this.currentPrice > 0) {
+                            this.cond_cost90 = this.currentPrice <= this.currentAvgCost * 0.9;
+                            this.cond_cost80 = this.currentPrice <= this.currentAvgCost * 0.8;
                         }
                     });
                     this.$watch('startDate', () => this.saveData());
                     this.$watch('isBlueLight', () => this.saveData());
                     this.$watch('isPanic', () => this.saveData());
                     this.$watch('investmentPlans', () => this.saveData(), { deep: true });
+                    this.$watch('transactions', () => this.saveData(), { deep: true });
                 },
 
                 addPlan() {
@@ -131,25 +141,74 @@
                     this.investmentPlans = this.investmentPlans.filter(p => p.id !== id);
                 },
 
-                // 執行單筆手動加碼
+                // 執行單筆手動加減碼 (第三步)
                 executeManualAdd() {
-                    if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0) {
-                        this.msgBoxText = '請輸入大於 0 的股數與成交單價！';
-                        this.showMsgBox = true;
-                        return;
+                    if (this.manualAction === 'dividend') {
+                        if (!this.manualAmount || this.manualAmount <= 0 || !this.manualDate) {
+                            this.msgBoxText = '請輸入完整的配息日期與總金額！';
+                            this.showMsgBox = true;
+                            return;
+                        }
+                        this.transactions.push({
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: 0,
+                            price: 0,
+                            amount: this.manualAmount,
+                            type: 'manual',
+                            action: 'dividend'
+                        });
+                    } else {
+                        if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0 || !this.manualDate) {
+                            this.msgBoxText = '請輸入完整的交易日期、股數與成交單價！';
+                            this.showMsgBox = true;
+                            return;
+                        }
+                        this.transactions.push({
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: this.manualShares,
+                            price: this.manualPrice,
+                            amount: this.manualShares * this.manualPrice,
+                            type: 'manual',
+                            action: this.manualAction
+                        });
                     }
-                    let currentTotalCost = this.shares * this.avgCost;
-                    let addedCost = this.manualShares * this.manualPrice;
-                    let newTotalCost = currentTotalCost + addedCost;
-                    
-                    this.shares += this.manualShares;
-                    this.avgCost = parseFloat((newTotalCost / this.shares).toFixed(2));
                     
                     this.manualShares = null;
                     this.manualPrice = null;
+                    this.manualAmount = null;
+                    this.manualDate = new Date().toISOString().split('T')[0];
+                    this.manualAction = 'buy';
                     this.saveData();
                     
-                    this.msgBoxText = '✅ 單筆加碼已成功併入您的庫存，均價已重新計算！';
+                    this.msgBoxText = '✅ 交易已成功存入歷史明細！\nXIRR 年化報酬率與均價已為您重新精算。';
+                    this.showMsgBox = true;
+                },
+
+                // 第四步：新增一筆空白歷史交易
+                addTransaction() {
+                    this.transactions.push({
+                        id: Date.now() + Math.random(),
+                        date: new Date().toISOString().split('T')[0],
+                        action: 'buy',
+                        amount: null,
+                        shares: null,
+                        price: null,
+                        type: 'manual'
+                    });
+                },
+
+                // 第四步：刪除一筆歷史交易
+                removeTransaction(id) {
+                    this.transactions = this.transactions.filter(t => t.id !== id);
+                    this.saveData();
+                },
+
+                clearTransactions() {
+                    this.transactions = [];
+                    this.saveData();
+                    this.msgBoxText = '🗑️ 所有歷史明細紀錄已清空！';
                     this.showMsgBox = true;
                 },
 
@@ -188,7 +247,7 @@
                     }
                 },
 
-                // 新增：抓取盤中即時報價 (Real-time Price)
+                // 抓取盤中即時報價
                 async fetchRealTimePrice() {
                     try {
                         const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW';
@@ -204,11 +263,10 @@
                                     const data = await response.json();
                                     if (data && data.chart && data.chart.result && data.chart.result[0]) {
                                         const meta = data.chart.result[0].meta;
-                                        // 取得盤中即時市價 (regularMarketPrice)
                                         if (meta && meta.regularMarketPrice) {
                                             this.currentPrice = parseFloat(meta.regularMarketPrice.toFixed(2));
                                             this.realTimeFetched = true;
-                                            return; // 成功抓到即時市價就提早結束
+                                            return; 
                                         }
                                     }
                                 }
@@ -222,10 +280,8 @@
                     this.isFetching = true;
                     let historicalData = [];
 
-                    // 1. 優先嘗試抓取盤中即時市價
                     await this.fetchRealTimePrice();
 
-                    // 2. 抓取歷史資料供技術指標與自動扣款運算
                     try {
                         const d = new Date();
                         d.setFullYear(d.getFullYear() - 12); 
@@ -240,7 +296,6 @@
                         }
                     } catch (e) { console.warn("FinMind API 失敗，切換備援方案...", e); }
 
-                    // 如果 FinMind 失敗，使用 Yahoo 歷史資料備援
                     if (historicalData.length === 0) {
                         try {
                             const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
@@ -267,7 +322,6 @@
                         } catch (error) {}
                     }
 
-                    // 3. 抓取其他輔助指標 (淨值比、融資餘額、折溢價)
                     try {
                         const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                         if(pbRes.ok) {
@@ -298,13 +352,11 @@
                         } else this.etfDiscount = 'API阻擋';
                     } catch(e) { this.etfDiscount = 'API阻擋'; }
 
-                    // 4. 計算指標與檢查自動扣款
                     if (historicalData.length > 0) {
                         this.historicalDataLoaded = true;
                         this.calculateIndicators(historicalData);
                         this.processAutoDeduct(historicalData);
                     } else {
-                        // 如果歷史資料全掛，且前面也沒抓到即時股價，最後才去證交所撈昨日收盤價墊檔
                         if (!this.realTimeFetched || this.currentPrice <= 0) {
                             await this.fetchTWSEPrice();
                         }
@@ -314,7 +366,6 @@
                     this.isFetching = false;
                 },
 
-                // 備用方案：證交所昨日收盤價
                 async fetchTWSEPrice() {
                     try {
                         const twseResponse = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
@@ -329,26 +380,22 @@
                 calculateIndicators(data) {
                     const len = data.length;
                     
-                    // 【關鍵邏輯】如果前面即時股價抓取失敗，才將 currentPrice 退回使用歷史陣列的最後一筆
                     if (!this.realTimeFetched || this.currentPrice <= 0) {
                         this.currentPrice = parseFloat(data[len - 1].close.toFixed(2));
                     }
 
-                    // 計算十年線 (約 2400 日)
                     if (len >= 2400) {
                         let sum = 0;
                         for(let i = len - 2400; i < len; i++) sum += data[i].close;
                         this.calc_ma120 = sum / 2400; 
                     } else this.calc_ma120 = 0; 
                     
-                    // 計算年線 (240 日)
                     if (len >= 240) {
                         let sum = 0;
                         for(let i = len - 240; i < len; i++) sum += data[i].close;
                         this.calc_ma240 = sum / 240;
                     }
 
-                    // 計算 KDJ 動能指標
                     let k = 50, d = 50;
                     for (let i = 8; i < len; i++) {
                         let highest = -Infinity, lowest = Infinity;
@@ -363,24 +410,28 @@
                     this.calc_k = k;
                 },
 
+                // 恢復系統判定 (清除手動干預)
                 autoCheckIndicators() {
-                    if (this.calc_k > 0) this.cond_k = this.calc_k < 20;
-                    if (this.calc_ma240 > 0) this.cond_ma240 = this.currentPrice < this.calc_ma240;
-                    if (this.calc_ma120 > 0) this.cond_ma120 = this.currentPrice < this.calc_ma120;
+                    this.cond_k = (this.calc_k > 0) ? (this.calc_k < 20) : false;
+                    this.cond_ma240 = (this.calc_ma240 > 0) ? (this.currentPrice < this.calc_ma240) : false;
+                    this.cond_ma120 = (this.calc_ma120 > 0) ? (this.currentPrice < this.calc_ma120) : false;
                     
                     let pb = parseFloat(this.pbRatio);
-                    if (!isNaN(pb)) this.cond_pb = pb < 1.6;
+                    this.cond_pb = !isNaN(pb) ? (pb < 1.6) : false;
                     
-                    if (this.avgCost > 0) {
-                        this.cond_cost90 = this.currentPrice <= this.avgCost * 0.9;
-                        this.cond_cost80 = this.currentPrice <= this.avgCost * 0.8;
+                    if (this.currentAvgCost > 0) {
+                        this.cond_cost90 = this.currentPrice <= this.currentAvgCost * 0.9;
+                        this.cond_cost80 = this.currentPrice <= this.currentAvgCost * 0.8;
                     } else {
                         this.cond_cost90 = false;
                         this.cond_cost80 = false;
                     }
 
                     let discount = parseFloat(this.etfDiscount);
-                    if (!isNaN(discount)) this.cond_discount = discount < 0;
+                    this.cond_discount = !isNaN(discount) ? (discount < 0) : false;
+                    
+                    this.isBlueLight = false;
+                    this.isPanic = false;
                 },
 
                 processAutoDeduct(historicalData) {
@@ -425,6 +476,16 @@
                                 const sharesBought = Math.floor(plan.amount / executedPrice);
                                 const actualCost = sharesBought * executedPrice;
 
+                                this.transactions.push({
+                                    id: Date.now() + Math.random(),
+                                    date: currentDate.toISOString().split('T')[0],
+                                    amount: actualCost,
+                                    shares: sharesBought,
+                                    price: executedPrice,
+                                    type: 'auto',
+                                    action: 'buy'
+                                });
+
                                 addedSharesTotal += sharesBought;
                                 addedCostTotal += actualCost;
 
@@ -440,20 +501,53 @@
                     }
 
                     if (logs.length > 0) {
-                        let currentTotalCost = this.shares * this.avgCost;
-                        let newTotalCost = currentTotalCost + addedCostTotal;
-                        
-                        this.shares += addedSharesTotal;
-                        if (this.shares > 0) {
-                            this.avgCost = parseFloat((newTotalCost / this.shares).toFixed(2));
-                        }
-                        
                         this.newLogs = logs;
                         this.showLogs = true;
                     }
 
                     this.lastCheckDate = new Date().getTime();
                     this.saveData();
+                },
+
+                // ======== 核心精算邏輯 ========
+                get inventoryState() {
+                    let currentShares = parseFloat(this.baseShares) || 0;
+                    let currentAvgCost = parseFloat(this.baseAvgCost) || 0;
+
+                    let sortedTxns = [...this.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                    for (let t of sortedTxns) {
+                        let s = parseFloat(t.shares) || 0;
+                        let amt = parseFloat(t.amount) || 0;
+                        let act = t.action || 'buy';
+
+                        if (act === 'buy') {
+                            let totalCost = currentShares * currentAvgCost + amt;
+                            currentShares += s;
+                            currentAvgCost = currentShares > 0 ? totalCost / currentShares : 0;
+                        } else if (act === 'sell') {
+                            currentShares -= s;
+                            if (currentShares < 0) currentShares = 0;
+                        }
+                        // dividend 不影響股數與持股均價
+                    }
+                    return {
+                        shares: currentShares,
+                        avgCost: currentAvgCost,
+                        totalCost: currentShares * currentAvgCost
+                    };
+                },
+
+                get currentTotalShares() { return this.inventoryState.shares; },
+                get currentTotalCost() { return this.inventoryState.totalCost; },
+                get currentAvgCost() { return this.currentTotalShares > 0 ? parseFloat(this.inventoryState.avgCost.toFixed(2)) : 0; },
+
+                get totalCashOut() {
+                    return (parseFloat(this.baseShares) * parseFloat(this.baseAvgCost) || 0) + 
+                           this.transactions.filter(t => t.action === 'buy').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                },
+                get totalCashIn() {
+                    return this.transactions.filter(t => t.action === 'sell' || t.action === 'dividend').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
                 },
 
                 get currentScore() {
@@ -497,10 +591,55 @@
                     return { mult, text, color, bg, border, amount: this.averageBaseAmount * mult };
                 },
 
-                get totalCost() { return this.shares * this.avgCost; },
-                get marketValue() { return this.currentPrice <= 0 ? 0 : (this.shares * this.currentPrice).toFixed(0); },
-                get profit() { return (this.marketValue - this.totalCost).toFixed(0); },
-                get roi() { return (this.totalCost <= 0 || this.marketValue <= 0) ? null : (((this.marketValue - this.totalCost) / this.totalCost) * 100).toFixed(2); },
+                get marketValueNum() { return this.currentPrice <= 0 ? 0 : (this.currentTotalShares * this.currentPrice); },
+                get marketValue() { return this.marketValueNum.toFixed(0); },
+                get profit() { return (this.marketValueNum + this.totalCashIn - this.totalCashOut).toFixed(0); },
+                get roi() { return this.totalCashOut <= 0 ? null : (((this.marketValueNum + this.totalCashIn - this.totalCashOut) / this.totalCashOut) * 100).toFixed(2); },
+
+                // 年化報酬率 (XIRR)
+                get annualizedROI() {
+                    if (this.currentTotalShares <= 0 || this.currentPrice <= 0) return null;
+                    
+                    let cashFlows = [];
+                    
+                    if (this.baseShares > 0) {
+                        let initDate = this.startDate ? new Date(this.startDate).getTime() : new Date().getTime();
+                        cashFlows.push({ date: initDate, amount: -(this.baseShares * this.baseAvgCost) });
+                    }
+
+                    for (let t of this.transactions) {
+                        let amt = parseFloat(t.amount) || 0;
+                        let act = t.action || 'buy';
+                        if (act === 'buy') {
+                            cashFlows.push({ date: new Date(t.date).getTime(), amount: -amt });
+                        } else if (act === 'sell' || act === 'dividend') {
+                            cashFlows.push({ date: new Date(t.date).getTime(), amount: amt });
+                        }
+                    }
+
+                    cashFlows.push({ date: new Date().getTime(), amount: this.currentTotalShares * this.currentPrice });
+                    cashFlows.sort((a, b) => a.date - b.date);
+
+                    const firstDate = cashFlows[0].date;
+                    const lastDate = cashFlows[cashFlows.length - 1].date;
+                    if ((lastDate - firstDate) < 86400000) return "持有時間過短"; 
+
+                    let rate = 0.1; 
+                    for (let i = 0; i < 100; i++) {
+                        let npv = 0, dnpv = 0;
+                        for (let cf of cashFlows) {
+                            const t = (cf.date - firstDate) / 31557600000;
+                            npv += cf.amount / Math.pow(1 + rate, t);
+                            dnpv -= (t * cf.amount) / Math.pow(1 + rate, t + 1);
+                        }
+                        if (Math.abs(npv) < 0.001) break;
+                        if (dnpv === 0) return "無法計算";
+                        rate = rate - npv / dnpv;
+                    }
+                    
+                    if (rate < -0.99 || rate > 100) return "數值極端"; 
+                    return (rate * 100).toFixed(2);
+                },
 
                 formatMoney(num) {
                     if (isNaN(num) || num === null) return '0';
@@ -509,8 +648,9 @@
 
                 saveData() {
                     const dataToSave = {
-                        shares: this.shares,
-                        avgCost: this.avgCost,
+                        baseShares: this.baseShares,
+                        baseAvgCost: this.baseAvgCost,
+                        transactions: this.transactions, 
                         investmentPlans: this.investmentPlans, 
                         startDate: this.startDate,
                         lastCheckDate: this.lastCheckDate,
@@ -526,8 +666,14 @@
                     if (saved) {
                         try {
                             const parsed = JSON.parse(saved);
-                            this.shares = parsed.shares || 0;
-                            this.avgCost = parsed.avgCost || 0;
+                            this.baseShares = parsed.baseShares !== undefined ? parsed.baseShares : (parsed.shares || 0);
+                            this.baseAvgCost = parsed.baseAvgCost !== undefined ? parsed.baseAvgCost : (parsed.avgCost || 0);
+                            
+                            this.transactions = (parsed.transactions || []).map(t => ({
+                                ...t,
+                                action: t.action || 'buy'
+                            }));
+                            
                             this.startDate = parsed.startDate || '';
                             this.lastCheckDate = parsed.lastCheckDate || null;
                             this.lastRemindedMonth = parsed.lastRemindedMonth || null;
@@ -650,22 +796,32 @@
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">現有庫存 (股) <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
-                        <div class="text-xl font-bold text-slate-800" x-text="shares > 0 ? formatMoney(shares) : '-'"></div>
+                        <div class="text-xs font-medium text-slate-500 mb-1">現有庫存 (股) <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
+                        <div class="text-xl font-bold text-slate-800" x-text="currentTotalShares > 0 ? formatMoney(currentTotalShares) : '-'"></div>
                     </div>
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">平均成本 (元) <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
-                        <div class="text-xl font-bold text-slate-800" x-text="avgCost > 0 ? avgCost : '-'"></div>
+                        <div class="text-xs font-medium text-slate-500 mb-1">平均成本 (元) <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
+                        <div class="text-xl font-bold text-slate-800" x-text="currentAvgCost > 0 ? currentAvgCost : '-'"></div>
                     </div>
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">總投入本金 <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
-                        <div class="text-xl font-bold text-slate-800" x-text="totalCost > 0 ? formatMoney(totalCost) + ' 元' : '-'"></div>
+                        <div class="text-xs font-medium text-slate-500 mb-1">總投入本金 <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
+                        <div class="text-xl font-bold text-slate-800" x-text="currentTotalCost > 0 ? formatMoney(currentTotalCost) + ' 元' : '-'"></div>
                     </div>
                     <div>
-                        <div class="text-xs font-medium text-slate-500 mb-1">未實現損益 <span class="text-[10px] text-slate-400 font-normal">[概估]</span></div>
-                        <div class="text-xl font-black flex items-baseline gap-1" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'">
-                            <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
-                            <span class="text-sm font-bold" x-show="roi !== null" x-text="'(' + roi + '%)'"></span>
+                        <div class="text-xs font-medium text-slate-500 mb-1">累積總損益 <span class="text-[10px] text-slate-400 font-normal">[含配息與已實現]</span></div>
+                        <div class="text-xl font-black flex flex-col gap-1">
+                            <div :class="profit >= 0 ? 'text-red-500' : 'text-green-500'" class="flex items-baseline gap-1">
+                                <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
+                                <span class="text-sm font-normal text-slate-500">元</span>
+                            </div>
+                            <div class="text-[11px] sm:text-xs text-slate-600 font-normal space-y-1 mt-0.5" x-show="roi !== null || annualizedROI !== null">
+                                <div class="flex items-center gap-1" x-show="roi !== null">
+                                    <i class="fa-solid fa-scale-unbalanced text-slate-400 w-3"></i> 簡易報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
+                                </div>
+                                <div class="flex items-center gap-1" x-show="annualizedROI !== null">
+                                    <i class="fa-solid fa-chart-line text-slate-400 w-3"></i> XIRR(年化報酬率): <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -704,9 +860,14 @@
                 </div>
 
                 <div class="mt-5 border-t border-slate-700/50 pt-5 relative z-10">
-                    <div class="text-sm text-slate-300 mb-3 flex items-center justify-between">
-                        <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-500 ml-1 hidden sm:inline">(系統自動判定，您亦可點擊沙盤推演)</span></span>
-                        <button @click="activeTab = 'report'" class="text-xs text-blue-400 hover:text-blue-300 underline">查看各指標詳細解說 >></button>
+                    <div class="text-sm text-slate-300 mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-500 ml-1 hidden md:inline">(系統自動判定，您亦可點擊沙盤推演)</span></span>
+                        <div class="flex items-center gap-3">
+                            <button @click="autoCheckIndicators()" class="text-xs text-emerald-400 hover:text-emerald-300 transition flex items-center gap-1 bg-slate-800 px-2 py-1.5 rounded-md border border-slate-700 shadow-sm" title="清除手動沙盤推演，恢復系統真實數據">
+                                <i class="fa-solid fa-rotate-left"></i> 恢復系統判定
+                            </button>
+                            <button @click="activeTab = 'report'" class="text-xs text-blue-400 hover:text-blue-300 underline">指標詳細解說 >></button>
+                        </div>
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -838,11 +999,11 @@
                                 <div class="p-3 bg-white rounded-lg border border-slate-200">
                                     <div class="text-sm font-bold mb-1">💡 您目前的狀態：</div>
                                     <div>
-                                        <p class="text-sm" :class="avgCost > 0 && currentPrice <= (avgCost * 0.9) ? 'text-teal-600 font-bold' : 'text-slate-700'">
-                                            <span x-show="avgCost == 0">您尚無成本資料，請至「系統設定」輸入您的平均成本。</span>
-                                            <span x-show="avgCost > 0 && currentPrice <= (avgCost * 0.9)">目前市價已低於您成本的 10% 以上！強烈建議此時執行紀律攤平，加速拉低成本。</span>
-                                            <span x-show="avgCost > 0 && currentPrice > (avgCost * 0.9) && currentPrice < avgCost">目前帳面處於小幅修正，依原定計畫紀律扣款即可。</span>
-                                            <span x-show="avgCost > 0 && currentPrice >= avgCost">帳面為獲利狀態，無須特別修正。</span>
+                                        <p class="text-sm" :class="currentAvgCost > 0 && currentPrice <= (currentAvgCost * 0.9) ? 'text-teal-600 font-bold' : 'text-slate-700'">
+                                            <span x-show="currentAvgCost == 0">您尚無成本資料，請至「系統設定」輸入或匯入明細。</span>
+                                            <span x-show="currentAvgCost > 0 && currentPrice <= (currentAvgCost * 0.9)">目前市價已低於您成本的 10% 以上！強烈建議此時執行紀律攤平，加速拉低成本。</span>
+                                            <span x-show="currentAvgCost > 0 && currentPrice > (currentAvgCost * 0.9) && currentPrice < currentAvgCost">目前帳面處於小幅修正，依原定計畫紀律扣款即可。</span>
+                                            <span x-show="currentAvgCost > 0 && currentPrice >= currentAvgCost">帳面為獲利狀態，無須特別修正。</span>
                                         </p>
                                     </div>
                                 </div>
@@ -945,15 +1106,18 @@
                 
                 <div class="space-y-6">
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
-                        <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-box-open mr-2"></i>第一步：輸入目前庫存</h3>
+                        <h3 class="font-bold text-slate-700 mb-4 text-sm flex items-center justify-between">
+                            <span><i class="fa-solid fa-box-open mr-2"></i>第一步：輸入期初(或總結)庫存</span>
+                        </h3>
+                        <p class="text-xs text-slate-500 mb-4">若您不需計算精準的年化報酬率，可直接輸入目前的總庫存。系統會以此為基礎開始往上加總。</p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">現有庫存總量 (股)</label>
-                                <input type="number" x-model.number="shares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">期初庫存量 (股)</label>
+                                <input type="number" x-model.number="baseShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">平均買入股價 (元)</label>
-                                <input type="number" step="0.01" x-model.number="avgCost" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">期初買入均價 (元)</label>
+                                <input type="number" step="0.01" x-model.number="baseAvgCost" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
                         </div>
                     </div>
@@ -996,22 +1160,93 @@
                     </div>
 
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
-                        <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加碼 (不影響自動扣款設定)</h3>
-                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進，但又不想打亂每月的「自動記帳規則」時，可直接在此輸入單次買進的資料，系統會立刻為您重算平均成本。</p>
+                        <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加減碼 (不影響自動扣款設定)</h3>
+                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進，或是逢高想減碼獲利了結時，可直接在此輸入單次交易，系統會立刻為您重算平均成本。</p>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">本次買入股數 (股)</label>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="col-span-2 md:col-span-1">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">交易日期</label>
+                                <input type="date" x-model="manualDate" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                            </div>
+                            <div class="col-span-2 md:col-span-1">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">買/賣/配息</label>
+                                <select x-model="manualAction" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold" :class="{'text-red-500 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-amber-600 bg-amber-50': manualAction === 'dividend'}">
+                                    <option value="buy">買入</option>
+                                    <option value="sell">賣出</option>
+                                    <option value="dividend">配息</option>
+                                </select>
+                            </div>
+                            <div class="col-span-1" x-show="manualAction !== 'dividend'">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">股數</label>
                                 <input type="number" x-model.number="manualShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100">
                             </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">本次成交單價 (元)</label>
+                            <div class="col-span-1" x-show="manualAction !== 'dividend'">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">單價</label>
                                 <input type="number" step="0.01" x-model.number="manualPrice" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 150.5">
+                            </div>
+                            <div class="col-span-2" x-show="manualAction === 'dividend'" x-cloak>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">配息總金額 (元)</label>
+                                <input type="number" x-model.number="manualAmount" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 5000">
                             </div>
                         </div>
                         <div class="mt-4 text-right">
                             <button @click="executeManualAdd()" class="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition shadow-sm">
-                                <i class="fa-solid fa-calculator mr-1"></i> 計算並加入庫存
+                                <i class="fa-solid fa-calculator mr-1"></i> 計算並加入帳本
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
+                        <h3 class="font-bold text-slate-700 mb-4 text-sm flex items-center justify-between">
+                            <span><i class="fa-solid fa-list-ul mr-2"></i>第四步：歷史交易明細管理 (XIRR 專用)</span>
+                            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-md font-bold">進階精算</span>
+                        </h3>
+                        <p class="text-xs text-slate-500 mb-4">
+                            系統的自動定期定額與單筆紀錄都會顯示在此。您可以點擊「新增一筆交易」來補足過去不同金額的扣款紀錄。這些完整紀錄是計算精確 XIRR 的核心資料。
+                        </p>
+                        
+                        <div class="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                            <template x-for="(txn, index) in transactions" :key="txn.id">
+                                <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative transition-all hover:border-blue-300">
+                                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                                        <!-- Date -->
+                                        <input type="date" x-model="txn.date" class="w-32 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
+                                        <!-- Action -->
+                                        <select x-model="txn.action" class="w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition font-bold" :class="{'text-red-500 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-amber-600 bg-amber-50': txn.action === 'dividend'}">
+                                            <option value="buy">買入</option>
+                                            <option value="sell">賣出</option>
+                                            <option value="dividend">配息</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Amount & Shares -->
+                                    <div class="flex-1 flex items-center gap-2 mt-2 sm:mt-0">
+                                        <input type="number" min="0" x-model.number="txn.amount" placeholder="總金額" class="w-full sm:w-28 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
+                                        <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">元,</span>
+                                        <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action === 'dividend'" x-cloak>元</span>
+                                        <input type="number" min="0" x-model.number="txn.shares" placeholder="股數" class="w-full sm:w-24 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition" x-show="txn.action !== 'dividend'">
+                                        <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">股</span>
+                                    </div>
+
+                                    <!-- Delete -->
+                                    <button @click="removeTransaction(txn.id)" class="absolute top-2 right-2 sm:static sm:ml-auto text-slate-300 hover:text-red-500 p-2 transition" title="刪除此紀錄">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                </div>
+                            </template>
+
+                            <div x-show="transactions.length === 0" class="text-center text-slate-400 text-sm py-6 border-2 border-dashed border-slate-200 rounded-lg">
+                                <i class="fa-solid fa-box-open text-2xl mb-2 opacity-50 block"></i>
+                                目前尚無任何歷史交易紀錄
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-slate-200">
+                            <button @click="clearTransactions()" class="text-sm text-red-500 hover:text-red-700 font-bold transition flex items-center px-2 py-1 rounded hover:bg-red-50">
+                                <i class="fa-solid fa-trash-can mr-1"></i> 清空所有明細
+                            </button>
+                            <button @click="addTransaction()" class="text-sm text-secondary hover:text-blue-700 font-bold flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition shadow-sm">
+                                <i class="fa-solid fa-plus"></i> 新增一筆交易
                             </button>
                         </div>
                     </div>
