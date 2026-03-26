@@ -66,7 +66,7 @@
                 transactions: [],       
 
                 manualDate: new Date().toISOString().split('T')[0], 
-                manualAction: 'buy',    
+                manualAction: 'sync',    
                 manualShares: null,
                 manualPrice: null,
                 manualAmount: null,     
@@ -215,7 +215,7 @@
                     this.manualPrice = null;
                     this.manualAmount = null;
                     this.manualDate = new Date().toISOString().split('T')[0];
-                    this.manualAction = 'buy';
+                    this.manualAction = 'sync';
                     this.saveData();
                     
                     if (this.manualAction !== 'sync') {
@@ -1212,7 +1212,7 @@
                                 </div>
 
                                 <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手動至證交所確認最新大盤淨值比。</p>
+                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手 মতামত動至證交所確認最新大盤淨值比。</p>
                                     <a href="https://www.twse.com.tw/zh/trading/historical/bwibbu.html" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
                                         <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往證交所查詢
                                     </a>
