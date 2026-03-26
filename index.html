@@ -104,6 +104,9 @@
                 deferredPrompt: null,
                 showInstallBtn: false,
 
+                // 退休提領規劃相關狀態
+                targetMonthlyExpense: 50000,
+
                 init() {
                     this.loadData();
                     if (!this.lastCheckDate) {
@@ -134,6 +137,7 @@
                     this.$watch('isPanic', () => this.saveData());
                     this.$watch('investmentPlans', () => this.saveData(), { deep: true });
                     this.$watch('transactions', () => this.saveData(), { deep: true });
+                    this.$watch('targetMonthlyExpense', () => this.saveData());
                 },
 
                 addPlan() {
@@ -165,7 +169,6 @@
                             action: 'dividend'
                         });
                     } else if (this.manualAction === 'sync') {
-                        // 【新增】庫存校正邏輯
                         if (this.manualShares == null || this.manualPrice == null || !this.manualDate) {
                             this.msgBoxText = '請輸入校正日期的「實際總股數」與「實際平均成本」！';
                             this.showMsgBox = true;
@@ -222,10 +225,7 @@
                 },
 
                 addTransaction() {
-                    // 預設為今日
                     let defaultDate = new Date().toISOString().split('T')[0];
-                    
-                    // 若已有歷史明細，則抓取最後一筆的日期作為預設值
                     if (this.transactions && this.transactions.length > 0) {
                         defaultDate = this.transactions[this.transactions.length - 1].date;
                     }
@@ -240,7 +240,6 @@
                         type: 'manual'
                     });
                     
-                    // 新增後自動捲動到列表最底端
                     this.$nextTick(() => {
                         const list = document.getElementById('txnList');
                         if (list) {
@@ -450,11 +449,8 @@
                     } catch(e) { this.etfDiscount = 'API阻擋'; }
 
                     if (historicalData.length > 0) {
-                        // 確保時間排序
                         historicalData.sort((a, b) => a.time - b.time);
 
-                        // 【核心修正】處理 0050 於 2025-06-18 的 1拆4 股票分割
-                        // 將該日期之前的歷史股價全部除以 4 (還原權值)，避免技術指標均線失真與回測股數錯誤
                         const splitTime = new Date('2025-06-18T00:00:00+08:00').getTime();
                         historicalData = historicalData.map(item => {
                             if (item.time < splitTime) {
@@ -634,7 +630,7 @@
                         let amt = parseFloat(t.amount) || 0;
                         let act = t.action || 'buy';
 
-                        if (act === 'buy' || act === 'sync') { // 【修改】加入 sync 一併計算累加成本
+                        if (act === 'buy' || act === 'sync') { 
                             let totalCost = currentShares * currentAvgCost + amt;
                             currentShares += s;
                             currentAvgCost = currentShares > 0 ? totalCost / currentShares : 0;
@@ -655,7 +651,6 @@
                 get currentAvgCost() { return this.currentTotalShares > 0 ? parseFloat(this.inventoryState.avgCost.toFixed(2)) : 0; },
 
                 get totalCashOut() {
-                    // 【修改】將 sync 的成本差額也算進總投入本金中
                     return (parseFloat(this.baseShares) * parseFloat(this.baseAvgCost) || 0) + 
                            this.transactions.filter(t => t.action === 'buy' || t.action === 'sync').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
                 },
@@ -709,6 +704,74 @@
                 get profit() { return (this.marketValueNum + this.totalCashIn - this.totalCashOut).toFixed(0); },
                 get roi() { return this.totalCashOut <= 0 ? null : (((this.marketValueNum + this.totalCashIn - this.totalCashOut) / this.totalCashOut) * 100).toFixed(2); },
 
+                // --- 退休提領邏輯 (Guyton-Klinger 動態提領) ---
+                get targetFireFund() {
+                    let monthly = parseFloat(this.targetMonthlyExpense) || 0;
+                    return monthly * 12 / 0.04; // 基準 4%
+                },
+                get fireProgress() {
+                    if (this.targetFireFund <= 0) return 0;
+                    let pct = (this.marketValueNum / this.targetFireFund) * 100;
+                    return Math.min(100, pct).toFixed(1);
+                },
+                get currentSafeMonthlyWithdrawal() {
+                    return (this.marketValueNum * 0.04 / 12).toFixed(0); // 單純 4% 數字顯示用
+                },
+                get currentWithdrawalRate() {
+                    if (this.marketValueNum <= 0) return 0;
+                    let annualExpense = (parseFloat(this.targetMonthlyExpense) || 0) * 12;
+                    return (annualExpense / this.marketValueNum);
+                },
+                get gkStatus() {
+                    let r = this.currentWithdrawalRate;
+                    let progress = parseFloat(this.fireProgress);
+                    
+                    if (progress < 80 || this.marketValueNum === 0) {
+                        return { 
+                            state: 'accumulating', 
+                            title: '🌱 資產累積中 (尚未達財務自由)', 
+                            desc: '目前總資產尚未達目標的 80%，提領率過高，不建議開始退休提領。請持續運用定期定額與逢低加碼策略擴大本金！', 
+                            color: 'text-slate-600',
+                            bg: 'bg-slate-50',
+                            border: 'border-slate-200',
+                            recommendedMonthly: this.currentSafeMonthlyWithdrawal
+                        };
+                    }
+
+                    // 護欄機制：上限 4.8%，下限 3.2%
+                    if (r > 0.048) {
+                        return { 
+                            state: 'danger', 
+                            title: '📉 觸發保本護欄 (建議減薪 10%)', 
+                            desc: '市場遭遇逆風，當前提領率已飆破 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', 
+                            color: 'text-red-600',
+                            bg: 'bg-red-50',
+                            border: 'border-red-200',
+                            recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) 
+                        };
+                    } else if (r < 0.032) {
+                        return { 
+                            state: 'success', 
+                            title: '🎉 觸發加薪護欄 (建議加薪 10%)', 
+                            desc: '市場大行牛市，當前提領率已降至 3.2% 以下！您的資產非常充裕，建議您今年「犒賞自己」，將預算上調 10%。', 
+                            color: 'text-purple-600',
+                            bg: 'bg-purple-50',
+                            border: 'border-purple-200',
+                            recommendedMonthly: (this.targetMonthlyExpense * 1.1).toFixed(0) 
+                        };
+                    } else {
+                        return { 
+                            state: 'normal', 
+                            title: '✅ 護欄安全區間 (維持現狀)', 
+                            desc: '當前提領率落在 3.2% ~ 4.8% 的安全通道內。市場波動正常，請安心維持您設定的退休預算。', 
+                            color: 'text-emerald-600',
+                            bg: 'bg-emerald-50',
+                            border: 'border-emerald-200',
+                            recommendedMonthly: this.targetMonthlyExpense.toFixed(0) 
+                        };
+                    }
+                },
+
                 get annualizedROI() {
                     if (this.currentTotalShares <= 0 || this.currentPrice <= 0) return null;
                     
@@ -722,7 +785,7 @@
                     for (let t of this.transactions) {
                         let amt = parseFloat(t.amount) || 0;
                         let act = t.action || 'buy';
-                        if (act === 'buy' || act === 'sync') { // 【修改】校正差額同樣要計算進 XIRR 現金流
+                        if (act === 'buy' || act === 'sync') { 
                             cashFlows.push({ date: new Date(t.date).getTime(), amount: -amt });
                         } else if (act === 'sell' || act === 'dividend') {
                             cashFlows.push({ date: new Date(t.date).getTime(), amount: amt });
@@ -768,7 +831,8 @@
                         lastCheckDate: this.lastCheckDate,
                         lastRemindedMonth: this.lastRemindedMonth,
                         isBlueLight: this.isBlueLight,
-                        isPanic: this.isPanic
+                        isPanic: this.isPanic,
+                        targetMonthlyExpense: this.targetMonthlyExpense
                     };
                     localStorage.setItem('THH0050_Data_V3', JSON.stringify(dataToSave));
                 },
@@ -791,6 +855,10 @@
                             this.lastRemindedMonth = parsed.lastRemindedMonth || null;
                             this.isBlueLight = parsed.isBlueLight || false;
                             this.isPanic = parsed.isPanic || false;
+                            
+                            if (parsed.targetMonthlyExpense !== undefined) {
+                                this.targetMonthlyExpense = parsed.targetMonthlyExpense;
+                            }
 
                             if (parsed.investmentPlans) {
                                 this.investmentPlans = parsed.investmentPlans;
@@ -891,6 +959,7 @@
             <i class="fa-solid fa-download mr-2"></i>安裝 APP 至手機桌面
         </button>
 
+        <!-- 【分頁一：主控台】 -->
         <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
             
             <div x-show="showUpdateReminder" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-xl shadow-sm relative" x-cloak x-transition>
@@ -1035,6 +1104,7 @@
             </div>
         </div>
 
+        <!-- 【分頁二：深度報告】 -->
         <div x-show="activeTab === 'report'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
             
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-10">
@@ -1209,10 +1279,88 @@
                             </div>
                         </div>
                     </section>
+                    
+                    <!-- 【核心更新】四、 退休與財務自由 (Guyton-Klinger 動態提領護欄) -->
+                    <section>
+                        <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">四、 退休與財務自由 (清流君動態提領護欄)</h3>
+                        
+                        <div class="space-y-6 pl-2">
+                            <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
+                                <h4 class="font-bold text-indigo-900 mb-3 flex items-center gap-2"><i class="fa-solid fa-piggy-bank text-indigo-500"></i>Guyton-Klinger 動態提領策略</h4>
+                                <p class="text-sm mb-3 text-indigo-800 leading-relaxed">
+                                    <strong>⭐ 清流君流派核心：護欄機制 (Guardrails)</strong><br>
+                                    傳統 4% 固定提領在遇到「股災」時，會強迫你在低點賣出大量股票，容易引發危機。動態提領則是<span class="font-bold underline">看當下總資產吃飯</span>，設定提領率的上下限（通常為基準的 ±20%，即 3.2% ~ 4.8%）。<br>
+                                    <strong>當股市大漲時，給自己加薪 10% 享受生活；當股市暴跌時，共體時艱減薪 10%。</strong>清流君回測證實，即使在 2004 年金融海嘯前夕投入 0050，使用此機制依然能安全撐過 20 年以上！
+                                </p>
+                                <p class="text-sm mb-4 text-indigo-800 leading-relaxed">
+                                    <strong>沒有高配息怎麼辦？</strong> 0050 配息率約 2.5%~3.5%。不足的部分，您只需在領息後<strong>「賣出少許零股」</strong>即可。市值型 ETF 靠的是股價長期成長，賣零股換生活費是維持資產不竭的最佳做法。
+                                </p>
+                                <p class="text-sm text-indigo-800 leading-relaxed mb-5">
+                                    <strong>防禦機制 (極度重要)：</strong> 退休前請務必準備 <strong>2~3 年生活費的「現金緩衝墊」</strong>（放定存或高利活存）。當遇到像 2008 年級別的股災，帳面重挫時，那兩年就<span class="text-red-500 font-bold">絕對不要賣股票</span>，改用這筆現金生活。
+                                </p>
+
+                                <!-- 提領試算工具 -->
+                                <div class="p-4 bg-white rounded-xl border border-indigo-200 shadow-sm">
+                                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-indigo-100">
+                                        <i class="fa-solid fa-compass-drafting text-indigo-500"></i>
+                                        <h5 class="font-bold text-indigo-900">專屬您的動態提領導航儀</h5>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-5">
+                                        <!-- 目標設定區 -->
+                                        <div>
+                                            <label class="block text-sm font-bold text-slate-700 mb-2">您期望的退休「每月」預算：</label>
+                                            <div class="flex items-center gap-2 mb-3">
+                                                <input type="number" x-model.number="targetMonthlyExpense" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition font-bold text-indigo-700">
+                                                <span class="text-sm text-slate-600">元</span>
+                                            </div>
+                                            <div class="text-xs text-slate-500 bg-slate-50 p-2 rounded">
+                                                基準 4% 法則目標總資產：<br>
+                                                <strong class="text-lg text-indigo-700" x-text="formatMoney(targetFireFund) + ' 元'"></strong>
+                                            </div>
+                                        </div>
+
+                                        <!-- 現況區 -->
+                                        <div>
+                                            <div class="text-sm text-slate-600 mb-1">您目前的 0050 總市值：</div>
+                                            <div class="text-2xl font-black text-slate-800 mb-3" x-text="formatMoney(marketValueNum) + ' 元'"></div>
+                                            
+                                            <!-- 財務自由進度條 -->
+                                            <div class="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden">
+                                                <div class="bg-indigo-500 h-3 rounded-full transition-all duration-1000" :style="`width: ${fireProgress}%`"></div>
+                                            </div>
+                                            <div class="flex justify-between items-center text-xs font-bold text-indigo-700 mt-2">
+                                                <span>當前提領率：<span x-text="marketValueNum > 0 ? (currentWithdrawalRate * 100).toFixed(2) + '%' : '0%'"></span></span>
+                                                <span>進度：<span x-text="fireProgress + '%'"></span></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- GK 動態結果面板 -->
+                                    <div class="p-4 rounded-lg border transition-colors duration-500" :class="`${gkStatus.bg} ${gkStatus.border}`">
+                                        <div class="text-sm font-black mb-2 flex items-center gap-2" :class="gkStatus.color">
+                                            <span x-text="gkStatus.title"></span>
+                                        </div>
+                                        <div class="text-sm text-slate-700 mb-4 leading-relaxed" x-text="gkStatus.desc"></div>
+                                        
+                                        <div class="border-t border-slate-200/50 pt-3 flex flex-col sm:flex-row sm:items-baseline gap-2">
+                                            <span class="text-sm text-slate-600 font-bold" x-text="gkStatus.state === 'accumulating' ? '此總市值目前安全月提領：' : '本月建議提領/扣款金：'"></span>
+                                            <span class="text-3xl font-black" :class="gkStatus.color" x-text="formatMoney(gkStatus.recommendedMonthly) + ' 元'"></span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-4 pt-3 border-t border-indigo-100 text-xs text-slate-500 flex flex-col sm:flex-row justify-between gap-2">
+                                        <span>※ 實務操作：0050 會配息，因此您只需在每年初將 (預算差額) 賣出零股，放入銀行分批使用即可。</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
         </div>
 
+        <!-- 【分頁三：系統設定】 -->
         <div x-show="activeTab === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
             
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-2xl mx-auto mb-10">
