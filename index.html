@@ -348,17 +348,22 @@
                 async refreshPrice() {
                     if (this.isFetchingPrice) return;
                     this.isFetchingPrice = true;
+                    this.realTimeFetched = false; // 重設狀態，強迫重新驗證
                     await this.fetchRealTimePrice();
                     if (!this.realTimeFetched || this.currentPrice <= 0) {
                         await this.fetchTWSEPrice();
                     }
                     this.autoCheckIndicators();
-                    this.isFetchingPrice = false;
+                    // 加上微小延遲，避免 API 回應太快導致使用者以為按鈕沒反應
+                    setTimeout(() => {
+                        this.isFetchingPrice = false;
+                    }, 500);
                 },
 
                 async fetchRealTimePrice() {
                     try {
-                        const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW';
+                        // 加上時間戳記強制破壞快取
+                        const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&_t=${Date.now()}`;
                         const proxies = [
                             'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
                             'https://corsproxy.io/?' + encodeURIComponent(yfUrl)
@@ -372,7 +377,8 @@
                                     if (data && data.chart && data.chart.result && data.chart.result[0]) {
                                         const meta = data.chart.result[0].meta;
                                         if (meta && meta.regularMarketPrice) {
-                                            this.currentPrice = parseFloat(meta.regularMarketPrice.toFixed(2));
+                                            // 移除 .toFixed(2) 保留原始精準度
+                                            this.currentPrice = meta.regularMarketPrice;
                                             this.realTimeFetched = true;
                                             return; 
                                         }
@@ -491,7 +497,8 @@
 
                 async fetchTWSEPrice() {
                     try {
-                        const twseResponse = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
+                        // 加上時間戳記強制破壞快取
+                        const twseResponse = await fetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL?_t=${Date.now()}`);
                         if (twseResponse.ok) {
                             const twseData = await twseResponse.json();
                             const stock0050 = twseData.find(stock => stock.Code === '0050');
@@ -504,7 +511,8 @@
                     const len = data.length;
                     
                     if (!this.realTimeFetched || this.currentPrice <= 0) {
-                        this.currentPrice = parseFloat(data[len - 1].close.toFixed(2));
+                        // 移除 .toFixed(2) 保留原始精準度
+                        this.currentPrice = data[len - 1].close;
                     }
 
                     if (len >= 2400) {
