@@ -1017,7 +1017,7 @@
                         </div>
                         <div class="text-[11px] sm:text-xs text-slate-600 font-normal space-y-1 mt-0.5" x-show="roi !== null || annualizedROI !== null">
                             <div class="flex items-center gap-1" x-show="roi !== null">
-                                <i class="fa-solid fa-scale-unbalanced text-slate-400 w-3"></i> 簡易報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
+                                <i class="fa-solid fa-scale-unbalanced text-slate-400 w-3"></i> 累積報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
                             </div>
                             <div class="flex items-center gap-1" x-show="annualizedROI !== null">
                                 <i class="fa-solid fa-chart-line text-slate-400 w-3"></i> XIRR(年化): <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
