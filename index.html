@@ -87,6 +87,7 @@
 
                 currentPrice: 0,
                 isFetching: false,
+                isFetchingPrice: false,
                 realTimeFetched: false,
                 historicalDataLoaded: false,
                 calc_k: 0,
@@ -342,6 +343,17 @@
                     } else {
                         alert("您的裝置或瀏覽器目前不支援自動安裝，或是您已經安裝過了。\niOS 用戶請點擊瀏覽器分享按鈕後，選擇「加入主畫面」。");
                     }
+                },
+
+                async refreshPrice() {
+                    if (this.isFetchingPrice) return;
+                    this.isFetchingPrice = true;
+                    await this.fetchRealTimePrice();
+                    if (!this.realTimeFetched || this.currentPrice <= 0) {
+                        await this.fetchTWSEPrice();
+                    }
+                    this.autoCheckIndicators();
+                    this.isFetchingPrice = false;
                 },
 
                 async fetchRealTimePrice() {
@@ -928,11 +940,16 @@
                     <p class="text-sm text-slate-500 mt-1">深度市場洞察與自動化記帳系統</p>
                 </div>
                 <div class="text-right">
-                    <div class="text-sm text-slate-500">0050 最新市價</div>
+                    <div class="text-sm text-slate-500 flex items-center justify-end gap-1">
+                        0050 最新市價
+                        <button @click="refreshPrice()" class="p-1 rounded transition text-slate-400 hover:text-blue-600 hover:bg-slate-200" title="更新即時股價">
+                            <i class="fa-solid fa-arrows-rotate" :class="{'animate-spin text-blue-500': isFetchingPrice}"></i>
+                        </button>
+                    </div>
                     <div class="text-2xl font-black text-slate-800 flex items-center justify-end gap-2">
-                        <span x-show="isFetching" class="text-sm text-slate-400"><i class="fa-solid fa-rotate-right animate-spin"></i> 抓取中...</span>
-                        <span x-show="!isFetching" x-text="currentPrice > 0 ? currentPrice : '無法取得'"></span>
-                        <span x-show="!isFetching && currentPrice > 0" class="text-base font-normal">元</span>
+                        <span x-show="isFetching || isFetchingPrice" class="text-sm text-slate-400"><i class="fa-solid fa-rotate-right animate-spin"></i> 抓取中...</span>
+                        <span x-show="!isFetching && !isFetchingPrice" x-text="currentPrice > 0 ? currentPrice : '無法取得'"></span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="text-base font-normal">元</span>
                     </div>
                 </div>
             </div>
