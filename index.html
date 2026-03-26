@@ -73,7 +73,7 @@
 
                 showMsgBox: false,
                 msgBoxText: '',
-                reloadOnClose: false, // 判斷關閉訊息視窗時是否重整頁面
+                reloadOnClose: false,
 
                 cond_k: false,        
                 cond_ma240: false,    
@@ -193,14 +193,30 @@
                 },
 
                 addTransaction() {
+                    // 預設為今日
+                    let defaultDate = new Date().toISOString().split('T')[0];
+                    
+                    // 若已有歷史明細，則抓取最後一筆的日期作為預設值
+                    if (this.transactions && this.transactions.length > 0) {
+                        defaultDate = this.transactions[this.transactions.length - 1].date;
+                    }
+
                     this.transactions.push({
                         id: Date.now() + Math.random(),
-                        date: new Date().toISOString().split('T')[0],
+                        date: defaultDate,
                         action: 'buy',
                         amount: null,
                         shares: null,
                         price: null,
                         type: 'manual'
+                    });
+                    
+                    // 新增後自動捲動到列表最底端
+                    this.$nextTick(() => {
+                        const list = document.getElementById('txnList');
+                        if (list) {
+                            list.scrollTop = list.scrollHeight;
+                        }
                     });
                 },
 
@@ -216,7 +232,6 @@
                     this.showMsgBox = true;
                 },
 
-                // 備份全系統資料 (JSON)
                 exportSystemBackup() {
                     const savedData = localStorage.getItem('THH0050_Data_V3');
                     if (!savedData) {
@@ -234,7 +249,6 @@
                     this.showMsgBox = true;
                 },
 
-                // 還原全系統資料 (JSON)
                 importSystemBackup(event) {
                     const file = event.target.files[0];
                     if (!file) return;
@@ -257,7 +271,7 @@
                         }
                     };
                     reader.readAsText(file);
-                    event.target.value = ''; // 重置 file input
+                    event.target.value = ''; 
                 },
 
                 closeMsgBox() {
@@ -407,6 +421,24 @@
                     } catch(e) { this.etfDiscount = 'API阻擋'; }
 
                     if (historicalData.length > 0) {
+                        // 確保時間排序
+                        historicalData.sort((a, b) => a.time - b.time);
+
+                        // 【核心修正】處理 0050 於 2025-06-18 的 1拆4 股票分割
+                        // 將該日期之前的歷史股價全部除以 4 (還原權值)，避免技術指標均線失真與回測股數錯誤
+                        const splitTime = new Date('2025-06-18T00:00:00+08:00').getTime();
+                        historicalData = historicalData.map(item => {
+                            if (item.time < splitTime) {
+                                return {
+                                    time: item.time,
+                                    close: item.close / 4,
+                                    high: item.high / 4,
+                                    low: item.low / 4
+                                };
+                            }
+                            return item;
+                        });
+
                         this.historicalDataLoaded = true;
                         this.calculateIndicators(historicalData);
                         this.processAutoDeduct(historicalData);
@@ -847,7 +879,6 @@
                 </div>
             </div>
 
-            <!-- 分拆的 4 張數據卡片 -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-6">
                 <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
                     <div class="text-xs font-medium text-slate-500 mb-1">現有庫存 (股) <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
@@ -880,7 +911,6 @@
                 </div>
             </div>
 
-            <!-- 漸層加碼建議卡片 -->
             <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-xl border border-slate-700 p-6 md:p-8 mb-6 relative overflow-hidden text-white" x-transition>
                 <div class="absolute -top-6 -right-6 p-4 opacity-5 text-9xl"><i class="fa-solid fa-crosshairs"></i></div>
                 
@@ -924,7 +954,6 @@
                         </div>
                     </div>
                     
-                    <!-- 使用統一 Class 的指標 Checkbox -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <label class="indicator-card">
                             <input type="checkbox" x-model="cond_k" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
@@ -1218,14 +1247,14 @@
                         <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加減碼 (不影響自動扣款設定)</h3>
                         <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進，或是逢高想減碼獲利了結時，可直接在此輸入單次交易，系統會立刻為您重算平均成本。</p>
                         
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                             <div class="col-span-2 md:col-span-1">
                                 <label class="block text-sm font-medium text-slate-600 mb-1">交易日期</label>
-                                <input type="date" x-model="manualDate" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                <input type="date" x-model="manualDate" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
                             <div class="col-span-2 md:col-span-1">
                                 <label class="block text-sm font-medium text-slate-600 mb-1">買/賣/配息</label>
-                                <select x-model="manualAction" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold" :class="{'text-red-500 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-amber-600 bg-amber-50': manualAction === 'dividend'}">
+                                <select x-model="manualAction" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold" :class="{'text-red-500 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-amber-600 bg-amber-50': manualAction === 'dividend'}">
                                     <option value="buy">買入</option>
                                     <option value="sell">賣出</option>
                                     <option value="dividend">配息</option>
@@ -1233,15 +1262,15 @@
                             </div>
                             <div class="col-span-1" x-show="manualAction !== 'dividend'">
                                 <label class="block text-sm font-medium text-slate-600 mb-1">股數</label>
-                                <input type="number" x-model.number="manualShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100">
+                                <input type="number" x-model.number="manualShares" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100">
                             </div>
                             <div class="col-span-1" x-show="manualAction !== 'dividend'">
                                 <label class="block text-sm font-medium text-slate-600 mb-1">單價</label>
-                                <input type="number" step="0.01" x-model.number="manualPrice" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 150.5">
+                                <input type="number" step="0.01" x-model.number="manualPrice" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 150">
                             </div>
                             <div class="col-span-2" x-show="manualAction === 'dividend'" x-cloak>
                                 <label class="block text-sm font-medium text-slate-600 mb-1">配息總金額 (元)</label>
-                                <input type="number" x-model.number="manualAmount" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 5000">
+                                <input type="number" x-model.number="manualAmount" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 5000">
                             </div>
                         </div>
                         <div class="mt-4 text-right">
@@ -1260,7 +1289,8 @@
                             系統的自動定期定額與單筆紀錄都會顯示在此。您可以點擊「新增一筆交易」來補足過去不同金額的扣款紀錄。這些完整紀錄是計算精確 XIRR 的核心資料。
                         </p>
                         
-                        <div class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                        <!-- 加上 id="txnList" 讓 JavaScript 可以抓到這個容器來控制捲軸 -->
+                        <div id="txnList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             <template x-for="(txn, index) in transactions" :key="txn.id">
                                 <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative transition-all hover:border-blue-300">
                                     <div class="flex items-center gap-2 w-full sm:w-auto">
