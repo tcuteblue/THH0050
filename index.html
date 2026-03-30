@@ -69,7 +69,7 @@
                 manualAction: 'sync',    
                 manualShares: null,
                 manualPrice: null,
-                manualAmount: null,     
+                manualAmount: null,      
 
                 showMsgBox: false,
                 msgBoxText: '',
@@ -107,6 +107,42 @@
 
                 // 退休提領規劃相關狀態
                 targetMonthlyExpense: 50000,
+
+                // --- API 共用優化模組 (新增) ---
+                async fetchWithFallback(url, isJson = true, timeoutMs = 8000) {
+                    const cacheBuster = `&_t=${Date.now()}`;
+                    const targetUrl = encodeURIComponent(url.includes('?') ? url + cacheBuster : url + '?_t=' + Date.now());
+                    
+                    const proxies = [
+                        `https://api.allorigins.win/raw?url=${targetUrl}`,
+                        `https://corsproxy.io/?url=${targetUrl}`
+                    ];
+
+                    const fetchPromise = (proxyUrl) => {
+                        return new Promise(async (resolve, reject) => {
+                            try {
+                                const controller = new AbortController();
+                                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+                                
+                                const res = await fetch(proxyUrl, { signal: controller.signal });
+                                clearTimeout(timeoutId);
+                                
+                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                                const data = isJson ? await res.json() : await res.text();
+                                resolve(data);
+                            } catch (err) {
+                                reject(err);
+                            }
+                        });
+                    };
+
+                    try {
+                        return await Promise.any(proxies.map(p => fetchPromise(p)));
+                    } catch (error) {
+                        console.warn("所有 Proxy 均抓取失敗:", url);
+                        return null;
+                    }
+                },
 
                 init() {
                     this.loadData();
@@ -348,47 +384,36 @@
                 async refreshPrice() {
                     if (this.isFetchingPrice) return;
                     this.isFetchingPrice = true;
-                    this.realTimeFetched = false; // 重設狀態，強迫重新驗證
+                    this.realTimeFetched = false; 
                     await this.fetchRealTimePrice();
                     if (!this.realTimeFetched || this.currentPrice <= 0) {
                         await this.fetchTWSEPrice();
                     }
                     this.autoCheckIndicators();
-                    // 加上微小延遲，避免 API 回應太快導致使用者以為按鈕沒反應
                     setTimeout(() => {
                         this.isFetchingPrice = false;
                     }, 500);
                 },
 
+                // --- 替換為新版容錯的 fetchRealTimePrice ---
                 async fetchRealTimePrice() {
                     try {
-                        // 加上時間戳記強制破壞快取
-                        const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&_t=${Date.now()}`;
-                        const proxies = [
-                            'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
-                            'https://corsproxy.io/?' + encodeURIComponent(yfUrl)
-                        ];
-
-                        for (let proxy of proxies) {
-                            try {
-                                const response = await fetch(proxy);
-                                if (response.ok) {
-                                    const data = await response.json();
-                                    if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                                        const meta = data.chart.result[0].meta;
-                                        if (meta && meta.regularMarketPrice) {
-                                            // 移除 .toFixed(2) 保留原始精準度
-                                            this.currentPrice = meta.regularMarketPrice;
-                                            this.realTimeFetched = true;
-                                            return; 
-                                        }
-                                    }
-                                }
-                            } catch (e) {}
+                        const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW';
+                        const data = await this.fetchWithFallback(yfUrl, true, 5000);
+                        
+                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                            const meta = data.chart.result[0].meta;
+                            if (meta && meta.regularMarketPrice) {
+                                this.currentPrice = meta.regularMarketPrice;
+                                this.realTimeFetched = true;
+                            }
                         }
-                    } catch (error) {}
+                    } catch (error) {
+                        console.log("Yahoo 即時股價抓取失敗，等待備援...");
+                    }
                 },
 
+                // --- 替換為新版容錯的 fetchDataAndProcess ---
                 async fetchDataAndProcess() {
                     if (this.isFetching) return;
                     this.isFetching = true;
@@ -396,11 +421,14 @@
 
                     await this.fetchRealTimePrice();
 
+                    // 1. 歷史 K 線 (先試 FinMind，失敗再換 Yahoo)
                     try {
                         const d = new Date();
                         d.setFullYear(d.getFullYear() - 12); 
                         const startDate = d.toISOString().split('T')[0];
                         const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDate}`;
+                        
+                        // FinMind 官方 API 允許直接打
                         const response = await fetch(finmindUrl);
                         const json = await response.json();
                         if (json.msg === 'success' && json.data && json.data.length > 0) {
@@ -408,63 +436,51 @@
                                 time: new Date(item.date).getTime(), close: item.close, high: item.max, low: item.min
                             }));
                         }
-                    } catch (e) { console.warn("FinMind API 失敗，切換備援方案...", e); }
-
-                    if (historicalData.length === 0) {
-                        try {
-                            const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
-                            const proxies = ['https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl), 'https://corsproxy.io/?' + encodeURIComponent(yfUrl)];
-                            for (let proxy of proxies) {
-                                try {
-                                    const response = await fetch(proxy);
-                                    if (response.ok) {
-                                        const data = await response.json();
-                                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                                            const result = data.chart.result[0];
-                                            const timestamps = result.timestamp;
-                                            const quotes = result.indicators.quote[0];
-                                            for(let i = 0; i < timestamps.length; i++) {
-                                                if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
-                                                    historicalData.push({ time: timestamps[i] * 1000, close: quotes.close[i], high: quotes.high[i], low: quotes.low[i] });
-                                                }
-                                            }
-                                            break; 
-                                        }
-                                    }
-                                } catch (e) {}
-                            }
-                        } catch (error) {}
+                    } catch (e) { 
+                        console.warn("FinMind API 失敗，切換 Yahoo 備援方案...", e); 
                     }
 
-                    try {
-                        const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
-                        if(pbRes.ok) {
-                            const pbData = await pbRes.json();
-                            const stock0050 = pbData.find(s => s.Code === '0050');
-                            this.pbRatio = (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') ? parseFloat(stock0050.PBratio).toFixed(2) : '無資料';
-                        } else this.pbRatio = 'API阻擋';
-                    } catch(e) { this.pbRatio = 'API阻擋'; }
+                    if (historicalData.length === 0) {
+                        const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
+                        const yfData = await this.fetchWithFallback(yfUrl);
+                        if (yfData && yfData.chart && yfData.chart.result && yfData.chart.result[0]) {
+                            const result = yfData.chart.result[0];
+                            const timestamps = result.timestamp;
+                            const quotes = result.indicators.quote[0];
+                            for(let i = 0; i < timestamps.length; i++) {
+                                if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
+                                    historicalData.push({ time: timestamps[i] * 1000, close: quotes.close[i], high: quotes.high[i], low: quotes.low[i] });
+                                }
+                            }
+                        }
+                    }
 
-                    try {
-                        const marginRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN');
-                        if(marginRes.ok) {
-                            const marginData = await marginRes.json();
-                            const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
-                            if (marginAmountItem && marginAmountItem.CurrentBalance) {
-                                let amountStr = marginAmountItem.CurrentBalance.replace(/,/g, '');
-                                this.marginBalance = (parseFloat(amountStr) / 100000).toFixed(2) + ' 億';
-                            } else this.marginBalance = '無資料';
-                        } else this.marginBalance = 'API阻擋';
-                    } catch(e) { this.marginBalance = 'API阻擋'; }
+                    // 2. 總經與情緒指標 (套用容錯 API)
+                    const pbData = await this.fetchWithFallback('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL', true);
+                    if (pbData) {
+                        const stock0050 = pbData.find(s => s.Code === '0050');
+                        this.pbRatio = (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') ? parseFloat(stock0050.PBratio).toFixed(2) : '無資料';
+                    } else {
+                        this.pbRatio = 'API阻擋';
+                    }
 
-                    try {
-                        const yuantaApi = 'https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066';
-                        const yuantaRes = await fetch('https://corsproxy.io/?' + encodeURIComponent(yuantaApi));
-                        if (yuantaRes.ok) {
-                            const yuantaData = await yuantaRes.json();
-                            this.etfDiscount = (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) ? yuantaData[0].pdRate + '%' : '無資料';
-                        } else this.etfDiscount = 'API阻擋';
-                    } catch(e) { this.etfDiscount = 'API阻擋'; }
+                    const marginData = await this.fetchWithFallback('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN', true);
+                    if (marginData) {
+                        const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
+                        if (marginAmountItem && marginAmountItem.CurrentBalance) {
+                            let amountStr = marginAmountItem.CurrentBalance.replace(/,/g, '');
+                            this.marginBalance = (parseFloat(amountStr) / 100000).toFixed(2) + ' 億';
+                        } else this.marginBalance = '無資料';
+                    } else {
+                        this.marginBalance = 'API阻擋';
+                    }
+
+                    const yuantaData = await this.fetchWithFallback('https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066', true);
+                    if (yuantaData) {
+                        this.etfDiscount = (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) ? yuantaData[0].pdRate + '%' : '無資料';
+                    } else {
+                        this.etfDiscount = 'API阻擋';
+                    }
 
                     if (historicalData.length > 0) {
                         historicalData.sort((a, b) => a.time - b.time);
@@ -497,10 +513,8 @@
 
                 async fetchTWSEPrice() {
                     try {
-                        // 加上時間戳記強制破壞快取
-                        const twseResponse = await fetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL?_t=${Date.now()}`);
-                        if (twseResponse.ok) {
-                            const twseData = await twseResponse.json();
+                        const twseData = await this.fetchWithFallback('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL', true);
+                        if (twseData) {
                             const stock0050 = twseData.find(stock => stock.Code === '0050');
                             if (stock0050 && stock0050.ClosingPrice) this.currentPrice = parseFloat(stock0050.ClosingPrice.replace(/,/g, ''));
                         }
@@ -511,7 +525,6 @@
                     const len = data.length;
                     
                     if (!this.realTimeFetched || this.currentPrice <= 0) {
-                        // 移除 .toFixed(2) 保留原始精準度
                         this.currentPrice = data[len - 1].close;
                     }
 
@@ -564,6 +577,7 @@
                     this.isPanic = false;
                 },
 
+                // --- 替換為新版：加入避開週末邏輯的 processAutoDeduct ---
                 processAutoDeduct(historicalData) {
                     if (!this.lastCheckDate || !this.investmentPlans || this.investmentPlans.length === 0) return;
 
@@ -582,18 +596,24 @@
                     let planStart = this.startDate ? new Date(this.startDate) : new Date(0);
                     planStart.setHours(0,0,0,0);
 
-                    let addedSharesTotal = 0;
-                    let addedCostTotal = 0;
-
                     while (currentDate <= today) {
                         if (currentDate >= planStart) {
                             const todayDay = currentDate.getDate();
                             const plansToday = this.investmentPlans.filter(p => parseInt(p.day) === todayDay && p.amount > 0);
                             
                             for (let plan of plansToday) {
-                                const targetTime = currentDate.getTime();
+                                // 【新功能】強制判斷是否為週末，若是，直接將目標日往後推至週一
+                                let safeDate = new Date(currentDate);
+                                while (safeDate.getDay() === 0 || safeDate.getDay() === 6) {
+                                    safeDate.setDate(safeDate.getDate() + 1);
+                                }
+                                
+                                // 若推延後超過今天，代表還沒到開盤日，先不扣款
+                                if (safeDate > today) continue;
+
+                                const targetTime = safeDate.getTime();
                                 let executedPrice = this.currentPrice;
-                                let executedTime = currentDate;
+                                let executedTime = safeDate;
 
                                 for (let i = 0; i < historicalData.length; i++) {
                                     if (historicalData[i].time >= targetTime) {
@@ -608,16 +628,13 @@
 
                                 this.transactions.push({
                                     id: Date.now() + Math.random(),
-                                    date: currentDate.toISOString().split('T')[0],
+                                    date: executedTime.toISOString().split('T')[0], // 確保寫入歷史明細的是實際交易日
                                     amount: actualCost,
                                     shares: sharesBought,
                                     price: executedPrice,
                                     type: 'auto',
                                     action: 'buy'
                                 });
-
-                                addedSharesTotal += sharesBought;
-                                addedCostTotal += actualCost;
 
                                 let dateStr = currentDate.toLocaleDateString();
                                 if (executedTime.getTime() !== currentDate.getTime()) {
@@ -1237,7 +1254,7 @@
                                 </div>
 
                                 <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手 মতামত動至證交所確認最新大盤淨值比。</p>
+                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手動至證交所確認最新大盤淨值比。</p>
                                     <a href="https://www.twse.com.tw/zh/trading/historical/bwibbu.html" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
                                         <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往證交所查詢
                                     </a>
@@ -1305,7 +1322,6 @@
                         </div>
                     </section>
                     
-                    <!-- 【核心更新】四、 退休與財務自由 (Guyton-Klinger 動態提領護欄) -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">四、 退休與財務自由 (清流君動態提領護欄)</h3>
                         
@@ -1512,7 +1528,6 @@
                             系統的自動定期定額與單筆紀錄都會顯示在此。您可以點擊「新增一筆交易」來補足過去不同金額的扣款紀錄。這些完整紀錄是計算精確 XIRR 的核心資料。
                         </p>
                         
-                        <!-- 加上 id="txnList" 讓 JavaScript 可以抓到這個容器來控制捲軸 -->
                         <div id="txnList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             <template x-for="(txn, index) in transactions" :key="txn.id">
                                 <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative transition-all hover:border-blue-300">
@@ -1530,7 +1545,6 @@
 
                                     <!-- Amount & Shares -->
                                     <div class="flex-1 flex items-center gap-2 mt-2 sm:mt-0">
-                                        <!-- 把 min="0" 拿掉，因為微調差額有可能是負數 (代表你買得比系統算的便宜) -->
                                         <input type="number" x-model.number="txn.amount" placeholder="總金額" class="w-full sm:w-28 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">元,</span>
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action === 'dividend'" x-cloak>元</span>
@@ -1613,3 +1627,4 @@
     </script>
 </body>
 </html>
+
