@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>0050 定期定額與加碼策略系統 V4</title>
+    <title>0050 定期定額與加碼策略系統</title>
     
     <meta name="theme-color" content="#1e3a8a">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,7 +12,6 @@
     <link rel="apple-touch-icon" href="./icon.png">
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         try {
@@ -25,12 +24,10 @@
             console.warn("Tailwind 設定載入延遲", e);
         }
     </script>
-    
-    <!-- FontAwesome & Lightweight Charts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 引入 TradingView Lightweight Charts 輕量級開源圖表庫 -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-    <!-- Alpine.js -->
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
     <style>
         html { font-size: 20px; }
@@ -41,11 +38,13 @@
         .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* 歷史明細列表捲動條 */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
+        /* 抽離指標卡片樣式以瘦身 HTML */
         .indicator-card {
             display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #cbd5e1;
             background-color: #1e293b; padding: 0.625rem 0.75rem; border-radius: 0.75rem;
@@ -73,8 +72,7 @@
                 manualAction: 'sync',    
                 manualShares: null,
                 manualPrice: null,
-                manualAmount: null,      
-                manualDateHint: '', 
+                manualAmount: null,     
 
                 showMsgBox: false,
                 msgBoxText: '',
@@ -90,24 +88,10 @@
                 cond_cost80: false,   
                 cond_discount: false, 
 
-                // --- 股價與歷史資料相關 ---
                 currentPrice: 0,
-                currentChange: 0,
-                currentChangePercent: 0,
-                currentVolume: 0, 
-                volumeStatus: '', // 🔥 爆量或 🧊 量縮
-                
-                historicalDataRaw: [], 
-                
-                queryDate: new Date().toISOString().split('T')[0], 
-                queryResult: null, 
-
-                // --- 圖表相關 ---
-                showChart: false,
-                chartRendered: false,
-                chartInstance: null,
-                chartData: { candles: [], volume: [], ma240: [], ma2400: [] },
-
+                prevClose: 0,          // 新增：昨日收盤價 (計算漲跌幅用)
+                currentVolume: 0,      
+                volumeStatus: '',      
                 isFetching: false,
                 isFetchingPrice: false,
                 realTimeFetched: false,
@@ -128,39 +112,13 @@
                 showInstallBtn: false,
 
                 targetMonthlyExpense: 50000,
-
-                // --- API 多重 Proxy 備援模組 ---
-                async fetchWithFallback(url, isJson = true, timeoutMs = 8000) {
-                    const cacheBuster = `&_t=${Date.now()}`;
-                    const targetUrl = encodeURIComponent(url.includes('?') ? url + cacheBuster : url + '?_t=' + Date.now());
-                    
-                    const proxies = [
-                        `https://api.allorigins.win/raw?url=${targetUrl}`,
-                        `https://corsproxy.io/?url=${targetUrl}`
-                    ];
-
-                    const fetchPromise = (proxyUrl) => {
-                        return new Promise(async (resolve, reject) => {
-                            try {
-                                const controller = new AbortController();
-                                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-                                const res = await fetch(proxyUrl, { signal: controller.signal });
-                                clearTimeout(timeoutId);
-                                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                                const data = isJson ? await res.json() : await res.text();
-                                resolve(data);
-                            } catch (err) {
-                                reject(err);
-                            }
-                        });
-                    };
-
-                    try {
-                        return await Promise.any(proxies.map(p => fetchPromise(p)));
-                    } catch (error) {
-                        return null;
-                    }
-                },
+                
+                // 新增：圖表相關狀態
+                showChart: false,
+                chartRendered: false,
+                chartData: [],
+                ma240Data: [],
+                ma2400Data: [],
 
                 init() {
                     this.loadData();
@@ -171,8 +129,6 @@
                     
                     this.fetchDataAndProcess().then(() => {
                         this.checkReminder();
-                        this.lookupHistoricalPrice(); 
-                        this.onManualDateChange();    
                     });
 
                     window.addEventListener('beforeinstallprompt', (e) => {
@@ -197,88 +153,164 @@
                     this.$watch('targetMonthlyExpense', () => this.saveData());
                 },
 
-                addPlan() { this.investmentPlans.push({ id: Date.now(), day: 15, amount: 10000 }); },
-                removePlan(id) { this.investmentPlans = this.investmentPlans.filter(p => p.id !== id); },
-
-                // --- 歷史資料搜尋引擎 ---
-                getHistoricalQuoteByDate(dateString) {
-                    if (!this.historicalDataRaw || this.historicalDataRaw.length === 0) return null;
-                    const targetDateStr = new Date(dateString).toISOString().split('T')[0];
-                    for (let i = this.historicalDataRaw.length - 1; i >= 0; i--) {
-                        const rowDateStr = new Date(this.historicalDataRaw[i].time).toISOString().split('T')[0];
-                        if (rowDateStr === targetDateStr) return this.historicalDataRaw[i];
-                    }
-                    return null; 
-                },
-
-                lookupHistoricalPrice() {
-                    const data = this.getHistoricalQuoteByDate(this.queryDate);
-                    if (data) {
-                        this.queryResult = {
-                            found: true, close: data.close.toFixed(2), high: data.high.toFixed(2), low: data.low.toFixed(2)
-                        };
-                    } else {
-                        this.queryResult = { found: false };
+                // --- 圖表控制區 ---
+                toggleChart() {
+                    this.showChart = !this.showChart;
+                    if (this.showChart && !this.chartRendered) {
+                        this.$nextTick(() => {
+                            this.renderChart();
+                        });
                     }
                 },
 
-                onManualDateChange() {
-                    if (this.manualAction === 'dividend' || this.manualAction === 'sync') {
-                        this.manualDateHint = '';
-                        return;
-                    }
-                    const data = this.getHistoricalQuoteByDate(this.manualDate);
-                    if (data) {
-                        this.manualPrice = parseFloat(data.close.toFixed(2));
-                        this.manualDateHint = `💡 系統自動帶入：該日收盤價 ${data.close.toFixed(2)} 元 (高:${data.high.toFixed(2)} / 低:${data.low.toFixed(2)})`;
-                    } else {
-                        this.manualDateHint = `⚠️ 查無該日開盤資料 (可能為假日)，請自行確認實際成交單價。`;
-                    }
+                renderChart() {
+                    const container = document.getElementById('lwc-chart');
+                    if (!container) return;
+                    
+                    container.innerHTML = ''; // 清空可能存在的舊圖
+
+                    const chart = LightweightCharts.createChart(container, {
+                        width: container.clientWidth,
+                        height: 400,
+                        layout: { background: { color: '#ffffff' }, textColor: '#475569' },
+                        grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
+                        rightPriceScale: { borderColor: '#cbd5e1' },
+                        timeScale: { borderColor: '#cbd5e1' },
+                        crosshair: {
+                            mode: LightweightCharts.CrosshairMode.Normal,
+                        }
+                    });
+
+                    // 1. K線圖 (紅漲綠跌)
+                    const candleSeries = chart.addCandlestickSeries({
+                        upColor: '#ef4444', 
+                        downColor: '#22c55e', 
+                        borderVisible: false,
+                        wickUpColor: '#ef4444', 
+                        wickDownColor: '#22c55e'
+                    });
+                    candleSeries.setData(this.chartData);
+
+                    // 2. 年線 (MA240)
+                    const ma240Series = chart.addLineSeries({ 
+                        color: '#f59e0b', 
+                        lineWidth: 2, 
+                        title: '年線',
+                        crosshairMarkerVisible: false
+                    });
+                    ma240Series.setData(this.ma240Data);
+
+                    // 3. 十年線 (MA2400)
+                    const ma2400Series = chart.addLineSeries({ 
+                        color: '#a855f7', 
+                        lineWidth: 2, 
+                        title: '十年線',
+                        crosshairMarkerVisible: false
+                    });
+                    ma2400Series.setData(this.ma2400Data);
+
+                    // 4. 成交量副圖
+                    const volumeSeries = chart.addHistogramSeries({
+                        priceFormat: { type: 'volume' },
+                        priceScaleId: '', // 設定為獨立/疊加 Scale
+                    });
+                    volumeSeries.priceScale().applyOptions({
+                        scaleMargins: { top: 0.8, bottom: 0 }, // 壓在底部 20%
+                    });
+                    
+                    const volumeData = this.chartData.map(d => ({
+                        time: d.time,
+                        value: d.volume,
+                        color: d.close >= d.open ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'
+                    }));
+                    volumeSeries.setData(volumeData);
+
+                    this.chartRendered = true;
+
+                    // RWD 視窗縮放適應
+                    window.addEventListener('resize', () => {
+                        if (container) chart.resize(container.clientWidth, 400);
+                    });
+                },
+                // -----------------
+
+                addPlan() {
+                    this.investmentPlans.push({
+                        id: Date.now(),
+                        day: 15,
+                        amount: 10000
+                    });
+                },
+
+                removePlan(id) {
+                    this.investmentPlans = this.investmentPlans.filter(p => p.id !== id);
                 },
 
                 executeManualAdd() {
                     if (this.manualAction === 'dividend') {
                         if (!this.manualAmount || this.manualAmount <= 0 || !this.manualDate) {
                             this.msgBoxText = '請輸入完整的配息日期與總金額！';
-                            this.showMsgBox = true; return;
+                            this.showMsgBox = true;
+                            return;
                         }
                         this.transactions.push({
-                            id: Date.now() + Math.random(), date: this.manualDate, shares: 0, price: 0,
-                            amount: this.manualAmount, type: 'manual', action: 'dividend'
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: 0,
+                            price: 0,
+                            amount: this.manualAmount,
+                            type: 'manual',
+                            action: 'dividend'
                         });
                     } else if (this.manualAction === 'sync') {
                         if (this.manualShares == null || this.manualPrice == null || !this.manualDate) {
                             this.msgBoxText = '請輸入校正日期的「實際總股數」與「實際平均成本」！';
-                            this.showMsgBox = true; return;
+                            this.showMsgBox = true;
+                            return;
                         }
+                        
                         let currentState = this.inventoryState; 
                         let targetShares = parseFloat(this.manualShares);
                         let targetTotalCost = targetShares * parseFloat(this.manualPrice);
+                        
                         let diffShares = targetShares - currentState.shares;
                         let diffAmount = targetTotalCost - currentState.totalCost;
                         
                         this.transactions.push({
-                            id: Date.now() + Math.random(), date: this.manualDate, shares: diffShares, price: 0, 
-                            amount: diffAmount, type: 'manual', action: 'sync'
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: diffShares,
+                            price: 0, 
+                            amount: diffAmount,
+                            type: 'manual',
+                            action: 'sync'
                         });
+                        
                         this.msgBoxText = `✅ 庫存校正已完成！\n系統已自動補足差額股數：${diffShares.toFixed(2)} 股\n自動微調成本差額：${diffAmount.toFixed(0)} 元`;
                         this.showMsgBox = true;
                     } else {
                         if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0 || !this.manualDate) {
                             this.msgBoxText = '請輸入完整的交易日期、股數與成交單價！';
-                            this.showMsgBox = true; return;
+                            this.showMsgBox = true;
+                            return;
                         }
                         this.transactions.push({
-                            id: Date.now() + Math.random(), date: this.manualDate, shares: this.manualShares,
-                            price: this.manualPrice, amount: this.manualShares * this.manualPrice,
-                            type: 'manual', action: this.manualAction
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: this.manualShares,
+                            price: this.manualPrice,
+                            amount: this.manualShares * this.manualPrice,
+                            type: 'manual',
+                            action: this.manualAction
                         });
                     }
                     
-                    this.manualShares = null; this.manualPrice = null; this.manualAmount = null;
+                    this.manualShares = null;
+                    this.manualPrice = null;
+                    this.manualAmount = null;
                     this.manualDate = new Date().toISOString().split('T')[0];
-                    this.manualAction = 'buy'; this.manualDateHint = '';
-                    this.onManualDateChange(); this.saveData();
+                    this.manualAction = 'sync';
+                    this.saveData();
                     
                     if (this.manualAction !== 'sync') {
                         this.msgBoxText = '✅ 交易已成功存入歷史明細！\nXIRR 年化報酬率與均價已為您重新精算。';
@@ -288,32 +320,61 @@
 
                 addTransaction() {
                     let defaultDate = new Date().toISOString().split('T')[0];
-                    if (this.transactions && this.transactions.length > 0) defaultDate = this.transactions[this.transactions.length - 1].date;
-                    this.transactions.push({ id: Date.now() + Math.random(), date: defaultDate, action: 'buy', amount: null, shares: null, price: null, type: 'manual' });
+                    if (this.transactions && this.transactions.length > 0) {
+                        defaultDate = this.transactions[this.transactions.length - 1].date;
+                    }
+
+                    this.transactions.push({
+                        id: Date.now() + Math.random(),
+                        date: defaultDate,
+                        action: 'buy',
+                        amount: null,
+                        shares: null,
+                        price: null,
+                        type: 'manual'
+                    });
+                    
                     this.$nextTick(() => {
                         const list = document.getElementById('txnList');
-                        if (list) list.scrollTop = list.scrollHeight;
+                        if (list) {
+                            list.scrollTop = list.scrollHeight;
+                        }
                     });
                 },
 
-                removeTransaction(id) { this.transactions = this.transactions.filter(t => t.id !== id); this.saveData(); },
-                clearTransactions() { this.transactions = []; this.saveData(); this.msgBoxText = '🗑️ 所有歷史明細紀錄已清空！'; this.showMsgBox = true; },
-                
-                // ... (備份還原等輔助函數保持原樣)
+                removeTransaction(id) {
+                    this.transactions = this.transactions.filter(t => t.id !== id);
+                    this.saveData();
+                },
+
+                clearTransactions() {
+                    this.transactions = [];
+                    this.saveData();
+                    this.msgBoxText = '🗑️ 所有歷史明細紀錄已清空！';
+                    this.showMsgBox = true;
+                },
+
                 exportSystemBackup() {
                     const savedData = localStorage.getItem('THH0050_Data_V3');
-                    if (!savedData) { this.msgBoxText = '目前沒有資料可以備份！'; this.showMsgBox = true; return; }
+                    if (!savedData) {
+                        this.msgBoxText = '目前沒有資料可以備份！';
+                        this.showMsgBox = true;
+                        return;
+                    }
                     const blob = new Blob([savedData], { type: 'application/json' });
                     const link = document.createElement('a');
                     link.href = URL.createObjectURL(blob);
                     link.download = `0050_全系統備份檔_${new Date().toISOString().split('T')[0]}.json`;
                     link.click();
+
                     this.msgBoxText = '✅ 系統備份檔 (.json) 已下載！\n強烈建議將此檔案存入 Google 雲端硬碟。未來只要匯入此檔案，所有設定與紀錄皆可瞬間還原。';
                     this.showMsgBox = true;
                 },
+
                 importSystemBackup(event) {
                     const file = event.target.files[0];
                     if (!file) return;
+                    
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         try {
@@ -321,69 +382,107 @@
                             if (data && (data.transactions !== undefined || data.baseShares !== undefined || data.shares !== undefined)) {
                                 localStorage.setItem('THH0050_Data_V3', JSON.stringify(data));
                                 this.msgBoxText = '✅ 系統資料已成功還原！\n按下確定後系統將重新載入。';
-                                this.reloadOnClose = true; this.showMsgBox = true;
-                            } else throw new Error('檔案內容不符');
+                                this.reloadOnClose = true;
+                                this.showMsgBox = true;
+                            } else {
+                                throw new Error('檔案內容不符');
+                            }
                         } catch (err) {
                             this.msgBoxText = '❌ 還原失敗！請確保上傳的是系統匯出的正確備份檔 (.json)。';
                             this.showMsgBox = true;
                         }
                     };
-                    reader.readAsText(file); event.target.value = ''; 
+                    reader.readAsText(file);
+                    event.target.value = ''; 
                 },
-                closeMsgBox() { this.showMsgBox = false; if (this.reloadOnClose) window.location.reload(); },
+
+                closeMsgBox() {
+                    this.showMsgBox = false;
+                    if (this.reloadOnClose) {
+                        window.location.reload();
+                    }
+                },
+
                 checkReminder() {
                     if (!this.investmentPlans || this.investmentPlans.length === 0) return;
+                    
                     const days = this.investmentPlans.map(p => parseInt(p.day)).filter(d => !isNaN(d) && d >= 1 && d <= 31);
                     if (days.length === 0) return;
+                    
                     const maxDay = Math.max(...days);
                     const today = new Date();
                     const currentMonthKey = `${today.getFullYear()}-${today.getMonth()}`;
-                    if (today.getDate() > maxDay && this.lastRemindedMonth !== currentMonthKey) this.showUpdateReminder = true;
+                    
+                    if (today.getDate() > maxDay && this.lastRemindedMonth !== currentMonthKey) {
+                        this.showUpdateReminder = true;
+                    }
                 },
+
                 dismissReminder() {
                     const today = new Date();
                     this.lastRemindedMonth = `${today.getFullYear()}-${today.getMonth()}`;
-                    this.showUpdateReminder = false; this.saveData();
+                    this.showUpdateReminder = false;
+                    this.saveData();
                 },
+
                 async installApp() {
                     if (this.deferredPrompt) {
                         this.deferredPrompt.prompt();
                         const { outcome } = await this.deferredPrompt.userChoice;
-                        if (outcome === 'accepted') this.showInstallBtn = false;
+                        if (outcome === 'accepted') {
+                            this.showInstallBtn = false;
+                        }
                         this.deferredPrompt = null;
                     } else {
                         alert("您的裝置或瀏覽器目前不支援自動安裝，或是您已經安裝過了。\niOS 用戶請點擊瀏覽器分享按鈕後，選擇「加入主畫面」。");
                     }
                 },
 
-                // --- 核心資料抓取與處理 ---
                 async refreshPrice() {
                     if (this.isFetchingPrice) return;
                     this.isFetchingPrice = true;
                     this.realTimeFetched = false; 
                     await this.fetchRealTimePrice();
-                    if (!this.realTimeFetched || this.currentPrice <= 0) await this.fetchTWSEPrice();
+                    if (!this.realTimeFetched || this.currentPrice <= 0) {
+                        await this.fetchTWSEPrice();
+                    }
                     this.autoCheckIndicators();
-                    setTimeout(() => { this.isFetchingPrice = false; }, 500);
+                    if(this.chartRendered && this.showChart) {
+                        this.renderChart(); // 重新繪製以更新最新價格
+                    }
+                    setTimeout(() => {
+                        this.isFetchingPrice = false;
+                    }, 500);
                 },
 
                 async fetchRealTimePrice() {
                     try {
-                        const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW';
-                        const data = await this.fetchWithFallback(yfUrl, true, 5000);
-                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                            const meta = data.chart.result[0].meta;
-                            if (meta && meta.regularMarketPrice) {
-                                this.currentPrice = meta.regularMarketPrice;
-                                this.realTimeFetched = true;
-                                if (meta.previousClose) {
-                                    this.currentChange = this.currentPrice - meta.previousClose;
-                                    this.currentChangePercent = (this.currentChange / meta.previousClose) * 100;
+                        const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&_t=${Date.now()}`;
+                        const proxies = [
+                            'https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl),
+                            'https://corsproxy.io/?' + encodeURIComponent(yfUrl)
+                        ];
+
+                        for (let proxy of proxies) {
+                            try {
+                                const response = await fetch(proxy);
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                                        const meta = data.chart.result[0].meta;
+                                        if (meta && meta.regularMarketPrice) {
+                                            this.currentPrice = meta.regularMarketPrice;
+                                            if (meta.regularMarketVolume) {
+                                                this.currentVolume = meta.regularMarketVolume;
+                                            }
+                                            this.realTimeFetched = true;
+                                            return; 
+                                        }
+                                    }
                                 }
-                                if (meta.regularMarketVolume) this.currentVolume = meta.regularMarketVolume;
-                            }
+                            } catch (e) {}
                         }
-                    } catch (error) { console.log("Yahoo 即時抓取失敗，等待備援..."); }
+                    } catch (error) {}
                 },
 
                 async fetchDataAndProcess() {
@@ -397,57 +496,68 @@
                         const d = new Date();
                         d.setFullYear(d.getFullYear() - 12); 
                         const startDate = d.toISOString().split('T')[0];
+                        // API 取得資料：加入 open 開盤價
                         const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDate}`;
-                        const fmRes = await fetch(finmindUrl);
-                        const fmData = await fmRes.json();
-                        if (fmData.msg === 'success' && fmData.data.length > 0) {
-                            historicalData = fmData.data.map(item => ({
-                                time: new Date(item.date).getTime(), open: item.open, close: item.close, high: item.max, low: item.min, volume: item.Trading_Volume
+                        const response = await fetch(finmindUrl);
+                        const json = await response.json();
+                        if (json.msg === 'success' && json.data && json.data.length > 0) {
+                            historicalData = json.data.map(item => ({
+                                time: new Date(item.date).getTime(), 
+                                open: item.open, 
+                                close: item.close, 
+                                high: item.max, 
+                                low: item.min, 
+                                volume: item.Trading_Volume
                             }));
                         }
-                    } catch (e) { 
-                        console.warn("FinMind 失敗，切換 Yahoo 備援..."); 
+                    } catch (e) { console.warn("FinMind API 失敗，切換備援方案...", e); }
+
+                    if (historicalData.length === 0) {
                         try {
                             const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
-                            const yfData = await this.fetchWithFallback(yfUrl);
-                            if (yfData && yfData.chart && yfData.chart.result && yfData.chart.result[0]) {
-                                const result = yfData.chart.result[0];
-                                const timestamps = result.timestamp;
-                                const quotes = result.indicators.quote[0];
-                                for(let i = 0; i < timestamps.length; i++) {
-                                    if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
-                                        historicalData.push({ 
-                                            time: timestamps[i] * 1000, open: quotes.open[i], close: quotes.close[i], 
-                                            high: quotes.high[i], low: quotes.low[i], volume: quotes.volume[i] 
-                                        });
+                            const proxies = ['https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl), 'https://corsproxy.io/?' + encodeURIComponent(yfUrl)];
+                            for (let proxy of proxies) {
+                                try {
+                                    const response = await fetch(proxy);
+                                    if (response.ok) {
+                                        const data = await response.json();
+                                        if (data && data.chart && data.chart.result && data.chart.result[0]) {
+                                            const result = data.chart.result[0];
+                                            const timestamps = result.timestamp;
+                                            const quotes = result.indicators.quote[0];
+                                            for(let i = 0; i < timestamps.length; i++) {
+                                                if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
+                                                    historicalData.push({ 
+                                                        time: timestamps[i] * 1000, 
+                                                        open: quotes.open[i] || quotes.close[i],
+                                                        close: quotes.close[i], 
+                                                        high: quotes.high[i], 
+                                                        low: quotes.low[i],
+                                                        volume: quotes.volume[i] || 0
+                                                    });
+                                                }
+                                            }
+                                            break; 
+                                        }
                                     }
-                                }
+                                } catch (e) {}
                             }
-                        } catch (err) {}
+                        } catch (error) {}
                     }
 
-                    // 去除重複資料 (確保圖表渲染正常)
-                    const uniqueData = [];
-                    const seenTimes = new Set();
-                    for(let item of historicalData) {
-                        const tStr = new Date(item.time).toISOString().split('T')[0];
-                        if(!seenTimes.has(tStr)) { seenTimes.add(tStr); uniqueData.push(item); }
-                    }
-                    historicalData = uniqueData;
-                    historicalData.sort((a, b) => a.time - b.time);
-
-                    // 總經與情緒指標抓取 (多重備援)
                     try {
-                        const pbData = await this.fetchWithFallback('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL', true);
-                        if(pbData) {
+                        const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
+                        if(pbRes.ok) {
+                            const pbData = await pbRes.json();
                             const stock0050 = pbData.find(s => s.Code === '0050');
                             this.pbRatio = (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') ? parseFloat(stock0050.PBratio).toFixed(2) : '無資料';
                         } else this.pbRatio = 'API阻擋';
                     } catch(e) { this.pbRatio = 'API阻擋'; }
 
                     try {
-                        const marginData = await this.fetchWithFallback('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN', true);
-                        if(marginData) {
+                        const marginRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN');
+                        if(marginRes.ok) {
+                            const marginData = await marginRes.json();
                             const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
                             if (marginAmountItem && marginAmountItem.CurrentBalance) {
                                 let amountStr = marginAmountItem.CurrentBalance.replace(/,/g, '');
@@ -457,48 +567,39 @@
                     } catch(e) { this.marginBalance = 'API阻擋'; }
 
                     try {
-                        const yuantaData = await this.fetchWithFallback('https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066', true);
-                        if (Array.isArray(yuantaData) && yuantaData.length > 0) {
-                            this.etfDiscount = yuantaData[0].pdRate ? yuantaData[0].pdRate + '%' : '無資料';
+                        const yuantaApi = 'https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066';
+                        const yuantaRes = await fetch('https://corsproxy.io/?' + encodeURIComponent(yuantaApi));
+                        if (yuantaRes.ok) {
+                            const yuantaData = await yuantaRes.json();
+                            this.etfDiscount = (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) ? yuantaData[0].pdRate + '%' : '無資料';
                         } else this.etfDiscount = 'API阻擋';
                     } catch(e) { this.etfDiscount = 'API阻擋'; }
 
                     if (historicalData.length > 0) {
-                        // 處理 0050 股票分割邏輯
+                        historicalData.sort((a, b) => a.time - b.time);
+
                         const splitTime = new Date('2025-06-18T00:00:00+08:00').getTime();
                         historicalData = historicalData.map(item => {
                             if (item.time < splitTime) {
                                 return {
-                                    time: item.time, open: item.open / 4, close: item.close / 4, 
-                                    high: item.high / 4, low: item.low / 4, volume: item.volume * 4
+                                    time: item.time,
+                                    open: item.open / 4,
+                                    close: item.close / 4,
+                                    high: item.high / 4,
+                                    low: item.low / 4,
+                                    volume: item.volume
                                 };
                             }
                             return item;
                         });
 
-                        this.historicalDataRaw = JSON.parse(JSON.stringify(historicalData));
                         this.historicalDataLoaded = true;
-
-                        // --- 判斷 🔥 爆量與 🧊 量縮 ---
-                        let volSum = 0, count = 0;
-                        for (let i = Math.max(0, historicalData.length - 20); i < historicalData.length; i++) {
-                            volSum += historicalData[i].volume; count++;
-                        }
-                        let avgVol20 = count > 0 ? volSum / count : 0;
-                        let todayVol = this.currentVolume > 0 ? this.currentVolume : historicalData[historicalData.length - 1].volume;
-                        if (todayVol > avgVol20 * 1.5) this.volumeStatus = '🔥';
-                        else if (todayVol < avgVol20 * 0.6) this.volumeStatus = '🧊';
-                        else this.volumeStatus = '';
-
-                        // 準備圖表資料與運算指標
-                        this.prepareChartData(historicalData);
                         this.calculateIndicators(historicalData);
                         this.processAutoDeduct(historicalData);
-                        
-                        this.lookupHistoricalPrice(); 
-                        this.onManualDateChange();    
                     } else {
-                        if (!this.realTimeFetched || this.currentPrice <= 0) await this.fetchTWSEPrice();
+                        if (!this.realTimeFetched || this.currentPrice <= 0) {
+                            await this.fetchTWSEPrice();
+                        }
                     }
 
                     this.autoCheckIndicators();
@@ -507,98 +608,67 @@
 
                 async fetchTWSEPrice() {
                     try {
-                        const twseData = await this.fetchWithFallback('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL', true);
-                        if (twseData) {
+                        const twseResponse = await fetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL?_t=${Date.now()}`);
+                        if (twseResponse.ok) {
+                            const twseData = await twseResponse.json();
                             const stock0050 = twseData.find(stock => stock.Code === '0050');
-                            if (stock0050 && stock0050.ClosingPrice) this.currentPrice = parseFloat(stock0050.ClosingPrice.replace(/,/g, ''));
+                            if (stock0050 && stock0050.ClosingPrice) {
+                                this.currentPrice = parseFloat(stock0050.ClosingPrice.replace(/,/g, ''));
+                                if (stock0050.TradeVolume) {
+                                    this.currentVolume = parseFloat(stock0050.TradeVolume.replace(/,/g, ''));
+                                }
+                            }
                         }
                     } catch (error) {}
                 },
 
-                // --- 數據與圖表處理邏輯 ---
-                prepareChartData(data) {
-                    this.chartData = { candles: [], volume: [], ma240: [], ma2400: [] };
-                    
-                    for (let i = 0; i < data.length; i++) {
-                        const tStr = new Date(data[i].time).toISOString().split('T')[0];
-                        
-                        // K棒
-                        this.chartData.candles.push({ time: tStr, open: data[i].open, high: data[i].high, low: data[i].low, close: data[i].close });
-                        
-                        // 成交量 (紅漲綠跌台灣慣例)
-                        const volColor = data[i].close >= data[i].open ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)';
-                        this.chartData.volume.push({ time: tStr, value: data[i].volume, color: volColor });
-
-                        // 計算 MA240 (約一年)
-                        if (i >= 239) {
-                            let sum = 0;
-                            for (let j = i - 239; j <= i; j++) sum += data[j].close;
-                            this.chartData.ma240.push({ time: tStr, value: sum / 240 });
-                        }
-
-                        // 計算 MA2400 (約十年)
-                        if (i >= 2399) {
-                            let sum = 0;
-                            for (let j = i - 2399; j <= i; j++) sum += data[j].close;
-                            this.chartData.ma2400.push({ time: tStr, value: sum / 2400 });
-                        }
-                    }
-                },
-
-                toggleChart() {
-                    this.showChart = !this.showChart;
-                    if (this.showChart && !this.chartRendered) {
-                        // 等待動畫展開後再渲染，避免寬高計算錯誤
-                        setTimeout(() => {
-                            this.renderChart();
-                            this.chartRendered = true;
-                        }, 350);
-                    }
-                },
-
-                renderChart() {
-                    const chartContainer = document.getElementById('tvchart');
-                    if (!chartContainer || typeof LightweightCharts === 'undefined') return;
-                    chartContainer.innerHTML = ''; 
-
-                    const chart = LightweightCharts.createChart(chartContainer, {
-                        width: chartContainer.clientWidth,
-                        height: 400,
-                        layout: { background: { color: '#ffffff' }, textColor: '#475569' },
-                        grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
-                        timeScale: { borderColor: '#cbd5e1', timeVisible: true },
-                        rightPriceScale: { borderColor: '#cbd5e1' },
-                    });
-                    this.chartInstance = chart;
-
-                    // 主圖：K線 (台灣紅綠風格)
-                    const candleSeries = chart.addCandlestickSeries({
-                        upColor: '#ef4444', downColor: '#22c55e', borderVisible: false, wickUpColor: '#ef4444', wickDownColor: '#22c55e'
-                    });
-                    candleSeries.setData(this.chartData.candles);
-
-                    // 主圖：均線
-                    const ma240Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 2, title: 'MA240(年)' });
-                    ma240Series.setData(this.chartData.ma240);
-
-                    const ma2400Series = chart.addLineSeries({ color: '#8b5cf6', lineWidth: 2, title: 'MA2400(十年)' });
-                    ma2400Series.setData(this.chartData.ma2400);
-
-                    // 副圖：成交量
-                    const volumeSeries = chart.addHistogramSeries({
-                        color: '#cbd5e1', priceFormat: { type: 'volume' }, priceScaleId: '', scaleMargins: { top: 0.8, bottom: 0 }
-                    });
-                    volumeSeries.setData(this.chartData.volume);
-
-                    // 綁定視窗縮放
-                    window.addEventListener('resize', () => {
-                        if (this.showChart && chartContainer) chart.resize(chartContainer.clientWidth, 400);
-                    });
-                },
-
                 calculateIndicators(data) {
                     const len = data.length;
-                    if (!this.realTimeFetched || this.currentPrice <= 0) this.currentPrice = data[len - 1].close;
+                    
+                    if (!this.realTimeFetched || this.currentPrice <= 0) {
+                        this.currentPrice = data[len - 1].close;
+                        if (!this.currentVolume) this.currentVolume = data[len - 1].volume || 0;
+                    }
+
+                    // --- 整理圖表所需的 OHLC 唯一資料 ---
+                    let uniqueChartData = [];
+                    let seen = new Set();
+                    for (let d of data) {
+                        let t = new Date(d.time);
+                        let timeStr = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+                        // 確保資料唯一性，並過濾掉沒有開收盤價的異常日
+                        if (!seen.has(timeStr) && d.open !== undefined && d.close !== undefined) {
+                            seen.add(timeStr);
+                            uniqueChartData.push({ 
+                                time: timeStr, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume 
+                            });
+                        }
+                    }
+                    this.chartData = uniqueChartData;
+
+                    // 取昨日收盤價計算漲跌幅
+                    if (this.chartData.length >= 2) {
+                        this.prevClose = this.chartData[this.chartData.length - 2].close;
+                    }
+
+                    // 計算 MA240, MA2400 給圖表畫線用
+                    let ma240Arr = [];
+                    let ma2400Arr = [];
+                    for (let i = 0; i < uniqueChartData.length; i++) {
+                        if (i >= 239) {
+                            let sum = 0;
+                            for (let j = i - 239; j <= i; j++) sum += uniqueChartData[j].close;
+                            ma240Arr.push({ time: uniqueChartData[i].time, value: sum / 240 });
+                        }
+                        if (i >= 2399) {
+                            let sum = 0;
+                            for (let j = i - 2399; j <= i; j++) sum += uniqueChartData[j].close;
+                            ma2400Arr.push({ time: uniqueChartData[i].time, value: sum / 2400 });
+                        }
+                    }
+                    this.ma240Data = ma240Arr;
+                    this.ma2400Data = ma2400Arr;
+                    // ---------------------------------
 
                     if (len >= 2400) {
                         let sum = 0;
@@ -610,6 +680,23 @@
                         let sum = 0;
                         for(let i = len - 240; i < len; i++) sum += data[i].close;
                         this.calc_ma240 = sum / 240;
+                    }
+
+                    // 修改為：計算 20 日(月均量)判斷爆量/量縮
+                    if (len >= 20) {
+                        let sumVol = 0;
+                        for(let i = len - 20; i < len; i++) sumVol += (data[i].volume || 0);
+                        let avgVol = sumVol / 20;
+                        
+                        let targetVol = this.currentVolume > 0 ? this.currentVolume : (data[len-1].volume || 0);
+                        this.currentVolume = targetVol; 
+                        
+                        if (avgVol > 0) {
+                            // 爆量 > 月均量 1.5倍，量縮 < 月均量 0.6倍
+                            if (targetVol > avgVol * 1.5) this.volumeStatus = '🔥';
+                            else if (targetVol < avgVol * 0.6) this.volumeStatus = '🧊';
+                            else this.volumeStatus = '正常';
+                        }
                     }
 
                     let k = 50, d = 50;
@@ -630,32 +717,45 @@
                     this.cond_k = (this.calc_k > 0) ? (this.calc_k < 20) : false;
                     this.cond_ma240 = (this.calc_ma240 > 0) ? (this.currentPrice < this.calc_ma240) : false;
                     this.cond_ma120 = (this.calc_ma120 > 0) ? (this.currentPrice < this.calc_ma120) : false;
+                    
                     let pb = parseFloat(this.pbRatio);
                     this.cond_pb = !isNaN(pb) ? (pb < 1.6) : false;
                     
                     if (this.currentAvgCost > 0) {
                         this.cond_cost90 = this.currentPrice <= this.currentAvgCost * 0.9;
                         this.cond_cost80 = this.currentPrice <= this.currentAvgCost * 0.8;
-                    } else { this.cond_cost90 = false; this.cond_cost80 = false; }
+                    } else {
+                        this.cond_cost90 = false;
+                        this.cond_cost80 = false;
+                    }
 
                     let discount = parseFloat(this.etfDiscount);
                     this.cond_discount = !isNaN(discount) ? (discount < 0) : false;
-                    this.isBlueLight = false; this.isPanic = false;
+                    
+                    this.isBlueLight = false;
+                    this.isPanic = false;
                 },
 
                 processAutoDeduct(historicalData) {
                     if (!this.lastCheckDate || !this.investmentPlans || this.investmentPlans.length === 0) return;
-                    const today = new Date(); today.setHours(0,0,0,0);
-                    let lastCheck = new Date(this.lastCheckDate); lastCheck.setHours(0,0,0,0);
+
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    
+                    let lastCheck = new Date(this.lastCheckDate);
+                    lastCheck.setHours(0,0,0,0);
+
                     if (lastCheck.getTime() >= today.getTime()) return;
 
                     let logs = [];
                     let currentDate = new Date(lastCheck);
                     currentDate.setDate(currentDate.getDate() + 1);
+
                     let planStart = this.startDate ? new Date(this.startDate) : new Date(0);
                     planStart.setHours(0,0,0,0);
 
-                    let addedSharesTotal = 0; let addedCostTotal = 0;
+                    let addedSharesTotal = 0;
+                    let addedCostTotal = 0;
 
                     while (currentDate <= today) {
                         if (currentDate >= planStart) {
@@ -663,16 +763,9 @@
                             const plansToday = this.investmentPlans.filter(p => parseInt(p.day) === todayDay && p.amount > 0);
                             
                             for (let plan of plansToday) {
-                                // 遇到六日直接往後推，確保避開假日
-                                let safeDate = new Date(currentDate);
-                                while (safeDate.getDay() === 0 || safeDate.getDay() === 6) {
-                                    safeDate.setDate(safeDate.getDate() + 1);
-                                }
-                                if (safeDate > today) continue;
-
-                                const targetTime = safeDate.getTime();
+                                const targetTime = currentDate.getTime();
                                 let executedPrice = this.currentPrice;
-                                let executedTime = safeDate;
+                                let executedTime = currentDate;
 
                                 for (let i = 0; i < historicalData.length; i++) {
                                     if (historicalData[i].time >= targetTime) {
@@ -686,30 +779,42 @@
                                 const actualCost = sharesBought * executedPrice;
 
                                 this.transactions.push({
-                                    id: Date.now() + Math.random(), date: executedTime.toISOString().split('T')[0],
-                                    amount: actualCost, shares: sharesBought, price: executedPrice, type: 'auto', action: 'buy'
+                                    id: Date.now() + Math.random(),
+                                    date: currentDate.toISOString().split('T')[0],
+                                    amount: actualCost,
+                                    shares: sharesBought,
+                                    price: executedPrice,
+                                    type: 'auto',
+                                    action: 'buy'
                                 });
 
-                                addedSharesTotal += sharesBought; addedCostTotal += actualCost;
+                                addedSharesTotal += sharesBought;
+                                addedCostTotal += actualCost;
 
                                 let dateStr = currentDate.toLocaleDateString();
                                 if (executedTime.getTime() !== currentDate.getTime()) {
                                     dateStr = `${dateStr} (順延至 ${executedTime.toLocaleDateString()})`;
                                 }
-                                logs.push(`📅 ${dateStr}：歷史收盤價 ${executedPrice.toFixed(2)} 元，買入 ${sharesBought} 股 (實扣 ${actualCost.toFixed(0)} 元) [設定: ${plan.day}號扣${plan.amount}元]`);
+
+                                logs.push(`📅 ${dateStr}：歷史收盤價 ${executedPrice.toFixed(2)} 元，買入 ${sharesBought} 股 (實扣 ${actualCost.toFixed(0)} 元) [依設定: ${plan.day}號扣${plan.amount}元]`);
                             }
                         }
                         currentDate.setDate(currentDate.getDate() + 1);
                     }
 
-                    if (logs.length > 0) { this.newLogs = logs; this.showLogs = true; }
-                    this.lastCheckDate = new Date().getTime(); this.saveData();
+                    if (logs.length > 0) {
+                        this.newLogs = logs;
+                        this.showLogs = true;
+                    }
+
+                    this.lastCheckDate = new Date().getTime();
+                    this.saveData();
                 },
 
-                // --- 數據取得方法 (Getter) ---
                 get inventoryState() {
                     let currentShares = parseFloat(this.baseShares) || 0;
                     let currentAvgCost = parseFloat(this.baseAvgCost) || 0;
+
                     let sortedTxns = [...this.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
 
                     for (let t of sortedTxns) {
@@ -726,7 +831,11 @@
                             if (currentShares < 0) currentShares = 0;
                         }
                     }
-                    return { shares: currentShares, avgCost: currentAvgCost, totalCost: currentShares * currentAvgCost };
+                    return {
+                        shares: currentShares,
+                        avgCost: currentAvgCost,
+                        totalCost: currentShares * currentAvgCost
+                    };
                 },
 
                 get currentTotalShares() { return this.inventoryState.shares; },
@@ -778,6 +887,7 @@
                     } else if (s >= 20) { 
                         mult = 0.5; text = "逢低佈局區！短線超跌或小幅修正，可小額試水溫"; color="text-yellow-400"; bg="bg-yellow-900/40"; border="border-yellow-500/50";
                     }
+
                     return { mult, text, color, bg, border, amount: this.averageBaseAmount * mult };
                 },
 
@@ -786,47 +896,99 @@
                 get profit() { return (this.marketValueNum + this.totalCashIn - this.totalCashOut).toFixed(0); },
                 get roi() { return this.totalCashOut <= 0 ? null : (((this.marketValueNum + this.totalCashIn - this.totalCashOut) / this.totalCashOut) * 100).toFixed(2); },
 
-                // --- 退休提領邏輯 ---
-                get targetFireFund() { let monthly = parseFloat(this.targetMonthlyExpense) || 0; return monthly * 12 / 0.04; },
+                // --- 退休提領邏輯 (Guyton-Klinger 動態提領) ---
+                get targetFireFund() {
+                    let monthly = parseFloat(this.targetMonthlyExpense) || 0;
+                    return monthly * 12 / 0.04; // 基準 4%
+                },
                 get fireProgress() {
                     if (this.targetFireFund <= 0) return 0;
-                    let pct = (this.marketValueNum / this.targetFireFund) * 100; return Math.min(100, pct).toFixed(1);
+                    let pct = (this.marketValueNum / this.targetFireFund) * 100;
+                    return Math.min(100, pct).toFixed(1);
                 },
-                get currentSafeMonthlyWithdrawal() { return (this.marketValueNum * 0.04 / 12).toFixed(0); },
+                get currentSafeMonthlyWithdrawal() {
+                    return (this.marketValueNum * 0.04 / 12).toFixed(0); // 單純 4% 數字顯示用
+                },
                 get currentWithdrawalRate() {
                     if (this.marketValueNum <= 0) return 0;
-                    let annualExpense = (parseFloat(this.targetMonthlyExpense) || 0) * 12; return (annualExpense / this.marketValueNum);
+                    let annualExpense = (parseFloat(this.targetMonthlyExpense) || 0) * 12;
+                    return (annualExpense / this.marketValueNum);
                 },
                 get gkStatus() {
-                    let r = this.currentWithdrawalRate; let progress = parseFloat(this.fireProgress);
+                    let r = this.currentWithdrawalRate;
+                    let progress = parseFloat(this.fireProgress);
+                    
                     if (progress < 80 || this.marketValueNum === 0) {
-                        return { state: 'accumulating', title: '🌱 資產累積中 (尚未達財務自由)', desc: '目前總資產尚未達目標的 80%，提領率過高，不建議開始退休提領。請持續運用定期定額與逢低加碼策略擴大本金！', color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', recommendedMonthly: this.currentSafeMonthlyWithdrawal };
+                        return { 
+                            state: 'accumulating', 
+                            title: '🌱 資產累積中 (尚未達財務自由)', 
+                            desc: '目前總資產尚未達目標的 80%，提領率過高，不建議開始退休提領。請持續運用定期定額與逢低加碼策略擴大本金！', 
+                            color: 'text-slate-600',
+                            bg: 'bg-slate-50',
+                            border: 'border-slate-200',
+                            recommendedMonthly: this.currentSafeMonthlyWithdrawal
+                        };
                     }
+
+                    // 護欄機制：上限 4.8%，下限 3.2%
                     if (r > 0.048) {
-                        return { state: 'danger', title: '📉 觸發保本護欄 (建議減薪 10%)', desc: '市場遭遇逆風，當前提領率已飆破 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) };
+                        return { 
+                            state: 'danger', 
+                            title: '📉 觸發保本護欄 (建議減薪 10%)', 
+                            desc: '市場遭遇逆風，當前提領率已飆破 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', 
+                            color: 'text-red-600',
+                            bg: 'bg-red-50',
+                            border: 'border-red-200',
+                            recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) 
+                        };
                     } else if (r < 0.032) {
-                        return { state: 'success', title: '🎉 觸發加薪護欄 (建議加薪 10%)', desc: '市場大行牛市，當前提領率已降至 3.2% 以下！您的資產非常充裕，建議您今年「犒賞自己」，將預算上調 10%。', color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', recommendedMonthly: (this.targetMonthlyExpense * 1.1).toFixed(0) };
+                        return { 
+                            state: 'success', 
+                            title: '🎉 觸發加薪護欄 (建議加薪 10%)', 
+                            desc: '市場大行牛市，當前提領率已降至 3.2% 以下！您的資產非常充裕，建議您今年「犒賞自己」，將預算上調 10%。', 
+                            color: 'text-purple-600',
+                            bg: 'bg-purple-50',
+                            border: 'border-purple-200',
+                            recommendedMonthly: (this.targetMonthlyExpense * 1.1).toFixed(0) 
+                        };
                     } else {
-                        return { state: 'normal', title: '✅ 護欄安全區間 (維持現狀)', desc: '當前提領率落在 3.2% ~ 4.8% 的安全通道內。市場波動正常，請安心維持您設定的退休預算。', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', recommendedMonthly: this.targetMonthlyExpense.toFixed(0) };
+                        return { 
+                            state: 'normal', 
+                            title: '✅ 護欄安全區間 (維持現狀)', 
+                            desc: '當前提領率落在 3.2% ~ 4.8% 的安全通道內。市場波動正常，請安心維持您設定的退休預算。', 
+                            color: 'text-emerald-600',
+                            bg: 'bg-emerald-50',
+                            border: 'border-emerald-200',
+                            recommendedMonthly: this.targetMonthlyExpense.toFixed(0) 
+                        };
                     }
                 },
 
                 get annualizedROI() {
                     if (this.currentTotalShares <= 0 || this.currentPrice <= 0) return null;
+                    
                     let cashFlows = [];
+                    
                     if (this.baseShares > 0) {
                         let initDate = this.startDate ? new Date(this.startDate).getTime() : new Date().getTime();
                         cashFlows.push({ date: initDate, amount: -(this.baseShares * this.baseAvgCost) });
                     }
+
                     for (let t of this.transactions) {
-                        let amt = parseFloat(t.amount) || 0; let act = t.action || 'buy';
-                        if (act === 'buy' || act === 'sync') cashFlows.push({ date: new Date(t.date).getTime(), amount: -amt });
-                        else if (act === 'sell' || act === 'dividend') cashFlows.push({ date: new Date(t.date).getTime(), amount: amt });
+                        let amt = parseFloat(t.amount) || 0;
+                        let act = t.action || 'buy';
+                        if (act === 'buy' || act === 'sync') { 
+                            cashFlows.push({ date: new Date(t.date).getTime(), amount: -amt });
+                        } else if (act === 'sell' || act === 'dividend') {
+                            cashFlows.push({ date: new Date(t.date).getTime(), amount: amt });
+                        }
                     }
+
                     cashFlows.push({ date: new Date().getTime(), amount: this.currentTotalShares * this.currentPrice });
                     cashFlows.sort((a, b) => a.date - b.date);
 
-                    const firstDate = cashFlows[0].date; const lastDate = cashFlows[cashFlows.length - 1].date;
+                    const firstDate = cashFlows[0].date;
+                    const lastDate = cashFlows[cashFlows.length - 1].date;
                     if ((lastDate - firstDate) < 86400000) return "持有時間過短"; 
 
                     let rate = 0.1; 
@@ -834,26 +996,34 @@
                         let npv = 0, dnpv = 0;
                         for (let cf of cashFlows) {
                             const t = (cf.date - firstDate) / 31557600000;
-                            npv += cf.amount / Math.pow(1 + rate, t); dnpv -= (t * cf.amount) / Math.pow(1 + rate, t + 1);
+                            npv += cf.amount / Math.pow(1 + rate, t);
+                            dnpv -= (t * cf.amount) / Math.pow(1 + rate, t + 1);
                         }
                         if (Math.abs(npv) < 0.001) break;
                         if (dnpv === 0) return "無法計算";
                         rate = rate - npv / dnpv;
                     }
+                    
                     if (rate < -0.99 || rate > 100) return "數值極端"; 
                     return (rate * 100).toFixed(2);
                 },
 
                 formatMoney(num) {
-                    if (isNaN(num) || num === null) return '0';
+                    if (isNaN(num) || num === null || num === undefined) return '0';
                     return Number(num).toLocaleString('zh-TW', { maximumFractionDigits: 0 });
                 },
 
                 saveData() {
                     const dataToSave = {
-                        baseShares: this.baseShares, baseAvgCost: this.baseAvgCost, transactions: this.transactions, 
-                        investmentPlans: this.investmentPlans, startDate: this.startDate, lastCheckDate: this.lastCheckDate,
-                        lastRemindedMonth: this.lastRemindedMonth, isBlueLight: this.isBlueLight, isPanic: this.isPanic,
+                        baseShares: this.baseShares,
+                        baseAvgCost: this.baseAvgCost,
+                        transactions: this.transactions, 
+                        investmentPlans: this.investmentPlans, 
+                        startDate: this.startDate,
+                        lastCheckDate: this.lastCheckDate,
+                        lastRemindedMonth: this.lastRemindedMonth,
+                        isBlueLight: this.isBlueLight,
+                        isPanic: this.isPanic,
                         targetMonthlyExpense: this.targetMonthlyExpense
                     };
                     localStorage.setItem('THH0050_Data_V3', JSON.stringify(dataToSave));
@@ -866,98 +1036,140 @@
                             const parsed = JSON.parse(saved);
                             this.baseShares = parsed.baseShares !== undefined ? parsed.baseShares : (parsed.shares || 0);
                             this.baseAvgCost = parsed.baseAvgCost !== undefined ? parsed.baseAvgCost : (parsed.avgCost || 0);
-                            this.transactions = (parsed.transactions || []).map(t => ({ ...t, action: t.action || 'buy' }));
-                            this.startDate = parsed.startDate || ''; this.lastCheckDate = parsed.lastCheckDate || null;
-                            this.lastRemindedMonth = parsed.lastRemindedMonth || null; this.isBlueLight = parsed.isBlueLight || false;
+                            
+                            this.transactions = (parsed.transactions || []).map(t => ({
+                                ...t,
+                                action: t.action || 'buy'
+                            }));
+                            
+                            this.startDate = parsed.startDate || '';
+                            this.lastCheckDate = parsed.lastCheckDate || null;
+                            this.lastRemindedMonth = parsed.lastRemindedMonth || null;
+                            this.isBlueLight = parsed.isBlueLight || false;
                             this.isPanic = parsed.isPanic || false;
-                            if (parsed.targetMonthlyExpense !== undefined) this.targetMonthlyExpense = parsed.targetMonthlyExpense;
+                            
+                            if (parsed.targetMonthlyExpense !== undefined) {
+                                this.targetMonthlyExpense = parsed.targetMonthlyExpense;
+                            }
 
-                            if (parsed.investmentPlans) this.investmentPlans = parsed.investmentPlans;
+                            if (parsed.investmentPlans) {
+                                this.investmentPlans = parsed.investmentPlans;
+                            } 
                             else if (parsed.investmentDates !== undefined && parsed.baseAmount !== undefined) {
                                 const days = parsed.investmentDates.toString().split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 1 && d <= 31);
-                                if(days.length > 0) this.investmentPlans = days.map((d, i) => ({ id: Date.now() + i, day: d, amount: parsed.baseAmount }));
-                                else this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
-                            } else this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
-                        } catch (e) { this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }]; }
-                    } else this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                                if(days.length > 0) {
+                                    this.investmentPlans = days.map((d, i) => ({ id: Date.now() + i, day: d, amount: parsed.baseAmount }));
+                                } else {
+                                    this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                                }
+                            } else {
+                                this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                            }
+
+                        } catch (e) {
+                            this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                        }
+                    } else {
+                        this.investmentPlans = [{ id: Date.now(), day: 15, amount: 10000 }];
+                    }
                 }
             }));
         });
     </script>
+    
+    <!-- 加入了 defer 屬性，確保 Alpine.js 能夠正確初始化作用域 -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
 </head>
 <body class="bg-background text-slate-800 font-sans antialiased min-h-screen pb-20">
 
     <div x-data="investmentApp" x-cloak class="max-w-4xl mx-auto px-4 sm:px-6">
         
-        <!-- 毛玻璃訊息與日誌視窗 (保持不變) -->
+        <!-- 毛玻璃訊息視窗 -->
         <div x-show="showMsgBox" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center border border-slate-200">
                 <div class="text-lg font-bold text-slate-800 mb-6 whitespace-pre-line" x-text="msgBoxText"></div>
                 <button @click="closeMsgBox()" class="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition">確定</button>
             </div>
         </div>
+
+        <!-- 毛玻璃更新日誌視窗 -->
         <div x-show="showLogs" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
                 <div class="flex items-center gap-3 text-green-600 mb-4">
-                    <i class="fa-solid fa-circle-check text-2xl"></i><h3 class="text-xl font-bold">自動扣款紀錄已更新</h3>
+                    <i class="fa-solid fa-circle-check text-2xl"></i>
+                    <h3 class="text-xl font-bold">自動扣款紀錄已更新</h3>
                 </div>
                 <p class="text-sm text-slate-600 mb-4">系統偵測到自您上次開啟後，已過設定的扣款日，已自動為您加總概估庫存：</p>
                 <div class="bg-slate-50 p-3 rounded-lg text-sm space-y-2 mb-6 max-h-40 overflow-y-auto border border-slate-200">
-                    <template x-for="log in newLogs"><div x-text="log" class="text-slate-700"></div></template>
+                    <template x-for="log in newLogs">
+                        <div x-text="log" class="text-slate-700"></div>
+                    </template>
                 </div>
                 <button @click="showLogs = false" class="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition">我知道了</button>
             </div>
         </div>
 
-        <!-- 導覽列與動態報價 -->
+        <!-- 吸頂導覽列 -->
         <header class="sticky top-0 z-40 bg-background/90 backdrop-blur-md pt-6 pb-2 mb-6 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-slate-200/50">
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-4">
                 <div>
                     <h1 class="text-2xl sm:text-3xl font-black text-primary flex flex-wrap items-baseline gap-2">
                         <span><i class="fa-solid fa-layer-group"></i> 0050 投資建議</span>
-                        <span class="text-xs sm:text-sm font-normal text-slate-400">蔡宏和製作20260323 (V4)</span>
+                        <span class="text-xs sm:text-sm font-normal text-slate-400">蔡宏和製作20260323</span>
                     </h1>
                     <p class="text-sm text-slate-500 mt-1">深度市場洞察與自動化記帳系統</p>
                 </div>
                 <div class="text-right">
-                    <div class="text-sm text-slate-500 flex items-center justify-end gap-1 mb-1">
+                    <div class="text-sm text-slate-500 flex items-center justify-end gap-1">
                         0050 最新市價
                         <button @click="refreshPrice()" class="p-1 rounded transition text-slate-400 hover:text-blue-600 hover:bg-slate-200" title="更新即時股價">
                             <i class="fa-solid fa-arrows-rotate" :class="{'animate-spin text-blue-500': isFetchingPrice}"></i>
                         </button>
                     </div>
-                    <div class="text-2xl sm:text-3xl font-black text-slate-800 flex items-center justify-end gap-2">
+                    <div class="text-2xl font-black text-slate-800 flex items-center justify-end gap-2 mt-1">
                         <span x-show="isFetching || isFetchingPrice" class="text-sm text-slate-400"><i class="fa-solid fa-rotate-right animate-spin"></i> 抓取中...</span>
                         <span x-show="!isFetching && !isFetchingPrice" x-text="currentPrice > 0 ? currentPrice : '無法取得'"></span>
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="text-base font-normal">元</span>
+                        
+                        <!-- 新增：精緻漲跌幅與百分比 -->
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && prevClose > 0" class="text-sm font-bold ml-1 flex items-center" :class="currentPrice >= prevClose ? 'text-red-500' : 'text-green-500'">
+                            <i class="fa-solid mr-1" :class="currentPrice >= prevClose ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                            <span x-text="Math.abs(currentPrice - prevClose).toFixed(2)"></span>
+                            <span class="text-xs ml-0.5" x-text="'(' + (((currentPrice - prevClose) / prevClose) * 100).toFixed(2) + '%)'"></span>
+                        </span>
                     </div>
-                    <!-- 漲跌幅與 爆量/量縮 提示 -->
-                    <div class="text-xs font-medium mt-1 flex items-center justify-end gap-2" x-show="!isFetching && !isFetchingPrice && currentPrice > 0" x-cloak>
-                        <span :class="currentChange > 0 ? 'text-red-500' : (currentChange < 0 ? 'text-green-500' : 'text-slate-500')" class="flex items-center gap-1">
-                            <i class="fa-solid" :class="currentChange > 0 ? 'fa-caret-up' : (currentChange < 0 ? 'fa-caret-down' : 'fa-minus')"></i>
-                            <span x-text="Math.abs(currentChange).toFixed(2)"></span>
-                            <span x-text="'(' + (currentChange > 0 ? '+' : '') + currentChangePercent.toFixed(2) + '%)'"></span>
-                        </span>
-                        <span class="text-slate-400 border-l border-slate-300 pl-2 flex items-center gap-1" x-show="currentVolume > 0">
-                            量: <span x-text="formatMoney(currentVolume / 1000)"></span> 張
-                            <span x-show="volumeStatus === '🔥'" class="text-orange-500 text-sm ml-0.5" title="今日爆量 (大於月均量1.5倍)！市場情緒極端">🔥</span>
-                            <span x-show="volumeStatus === '🧊'" class="text-cyan-500 text-sm ml-0.5" title="今日量縮 (低於月均量0.6倍)！市場極度觀望">🧊</span>
-                        </span>
+                    
+                    <!-- 升級：月均量狀態顯示 -->
+                    <div x-show="!isFetching && !isFetchingPrice && currentVolume > 0" class="text-xs flex items-center justify-end gap-1 mt-1">
+                        <span class="text-slate-500">成交量: <span x-text="formatMoney(currentVolume / 1000)"></span> 張</span>
+                        <span x-show="volumeStatus === '🔥'" class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px]" title="爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
+                        <span x-show="volumeStatus === '🧊'" class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px]" title="量縮 (低於月均量0.6倍)">🧊 冷清量縮</span>
                     </div>
                 </div>
             </div>
 
             <div class="flex overflow-x-auto no-scrollbar whitespace-nowrap">
-                <button @click="activeTab = 'dashboard'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'dashboard'}"><i class="fa-solid fa-chart-pie mr-2"></i>主控台</button>
-                <button @click="activeTab = 'report'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'report'}"><i class="fa-solid fa-book-open mr-2"></i>深度報告</button>
-                <button @click="activeTab = 'settings'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'settings'}"><i class="fa-solid fa-gear mr-2"></i>系統設定</button>
+                <button @click="activeTab = 'dashboard'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'dashboard'}">
+                    <i class="fa-solid fa-chart-pie mr-2"></i>主控台
+                </button>
+                <button @click="activeTab = 'report'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'report'}">
+                    <i class="fa-solid fa-book-open mr-2"></i>深度報告
+                </button>
+                <button @click="activeTab = 'settings'" class="tab-btn px-4 sm:px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-800 transition" :class="{'active': activeTab === 'settings'}">
+                    <i class="fa-solid fa-gear mr-2"></i>系統設定
+                </button>
                 <div class="ml-auto flex items-center pl-2 pr-2">
-                    <button x-show="showInstallBtn" @click="installApp" class="hidden sm:inline-flex items-center justify-center px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak><i class="fa-solid fa-download mr-2"></i>安裝 APP</button>
+                    <button x-show="showInstallBtn" @click="installApp" class="hidden sm:inline-flex items-center justify-center px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak>
+                        <i class="fa-solid fa-download mr-2"></i>安裝 APP
+                    </button>
                 </div>
             </div>
         </header>
-
-        <button x-show="showInstallBtn" @click="installApp" class="w-full mb-6 sm:hidden inline-flex items-center justify-center px-4 py-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak><i class="fa-solid fa-download mr-2"></i>安裝 APP 至手機桌面</button>
+        
+        <button x-show="showInstallBtn" @click="installApp" class="w-full mb-6 sm:hidden inline-flex items-center justify-center px-4 py-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak>
+            <i class="fa-solid fa-download mr-2"></i>安裝 APP 至手機桌面
+        </button>
 
         <!-- 【分頁一：主控台】 -->
         <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
@@ -968,15 +1180,17 @@
                     <div class="flex-1">
                         <h3 class="text-sm font-bold text-yellow-800">溫馨提醒：本月扣款已全數完成</h3>
                         <p class="text-sm text-yellow-700 mt-1 pr-6 leading-relaxed">
-                            目前系統為自動運算之概估值，建議您登入券商對帳，並至「<button @click="activeTab = 'settings'; dismissReminder(); window.scrollTo(0,0);" class="underline font-bold text-yellow-800 hover:text-yellow-600">系統設定</button>」微調庫存，保持精準！
+                            目前系統為自動運算之概估值，與券商實際交易手續費可能有些許誤差。<br>
+                            建議您現在登入券商軟體對帳，並前往「<button @click="activeTab = 'settings'; dismissReminder(); window.scrollTo(0,0);" class="underline font-bold text-yellow-800 hover:text-yellow-600">系統設定</button>」微調庫存，保持精準度！
                         </p>
                     </div>
-                    <button @click="dismissReminder()" class="text-yellow-500 hover:text-yellow-700 p-1 absolute top-3 right-3"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    <button @click="dismissReminder()" class="text-yellow-500 hover:text-yellow-700 p-1 absolute top-3 right-3">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
                 </div>
             </div>
 
-            <!-- 核心指標四卡片 -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-2">
                 <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
                     <div class="text-xs font-medium text-slate-500 mb-1">現有庫存 (股) <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
                     <div class="text-2xl font-bold text-slate-800" x-text="currentTotalShares > 0 ? formatMoney(currentTotalShares) : '-'"></div>
@@ -993,57 +1207,66 @@
                     <div class="text-xs font-medium text-slate-500 mb-1">累積總損益 <span class="text-[10px] text-slate-400 font-normal">[含配息與已實現]</span></div>
                     <div class="text-xl sm:text-2xl font-black flex flex-col gap-1">
                         <div :class="profit >= 0 ? 'text-red-500' : 'text-green-500'" class="flex items-baseline gap-1">
-                            <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span><span class="text-sm font-normal text-slate-500">元</span>
+                            <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
+                            <span class="text-sm font-normal text-slate-500">元</span>
                         </div>
                         <div class="text-[11px] sm:text-xs text-slate-600 font-normal space-y-1 mt-0.5" x-show="roi !== null || annualizedROI !== null">
-                            <div class="flex items-center gap-1" x-show="roi !== null"><i class="fa-solid fa-scale-unbalanced text-slate-400 w-3"></i> 累積報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span></div>
-                            <div class="flex items-center gap-1" x-show="annualizedROI !== null"><i class="fa-solid fa-chart-line text-slate-400 w-3"></i> XIRR(年化): <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span></div>
+                            <div class="flex items-center gap-1" x-show="roi !== null">
+                                <i class="fa-solid fa-scale-unbalanced text-slate-400 w-3"></i> 累積報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
+                            </div>
+                            <div class="flex items-center gap-1" x-show="annualizedROI !== null">
+                                <i class="fa-solid fa-chart-line text-slate-400 w-3"></i> XIRR(年化): <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- 展開式技術線型圖表 (方案 A 整合) -->
-            <div class="mb-6 relative z-10">
-                <button @click="toggleChart" class="w-full py-3 px-6 bg-white border border-slate-200 shadow-sm rounded-xl text-slate-700 font-bold hover:bg-slate-50 hover:text-blue-600 transition flex items-center justify-between group">
-                    <span class="flex items-center gap-2"><i class="fa-solid fa-chart-column text-blue-500 group-hover:scale-110 transition-transform"></i> 展開 0050 專屬技術線型 (K棒與年線)</span>
-                    <i class="fa-solid transition-transform duration-300" :class="showChart ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
-                </button>
-                
-                <div x-show="showChart" x-collapse.duration.400ms class="mt-2 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden relative">
-                    <!-- 圖表頂部圖例說明 -->
-                    <div class="px-4 py-2 border-b border-slate-100 bg-slate-50/80 text-xs flex items-center justify-between">
-                        <span class="font-bold text-slate-600">0050 日K線與均線走勢</span>
-                        <div class="flex items-center gap-3">
-                            <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-amber-500 block"></span> MA240 (年線)</span>
-                            <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-purple-500 block"></span> MA2400 (十年線)</span>
-                        </div>
-                    </div>
-                    <!-- 圖表渲染容器 -->
-                    <div id="tvchart" class="w-full h-[400px]"></div>
-                    <!-- 若無資料遮罩 -->
-                    <div x-show="!historicalDataLoaded" class="absolute inset-0 bg-white/80 backdrop-blur flex items-center justify-center">
-                        <div class="text-slate-500 text-sm flex items-center gap-2"><i class="fa-solid fa-spinner fa-spin text-xl"></i> 圖表資料載入中...</div>
-                    </div>
+            <!-- 折疊式輕量級自繪圖表區塊 -->
+            <button @click="toggleChart()" class="w-full mt-2 mb-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex justify-center items-center gap-2 group">
+                <i class="fa-solid fa-chart-simple text-blue-500 group-hover:scale-110 transition-transform"></i>
+                <span x-text="showChart ? '收合 0050 長期技術與均線圖' : '📊 展開 0050 長期技術與均線圖'"></span>
+            </button>
+
+            <div x-show="showChart" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-[-10px]" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="bg-white p-1 sm:p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 w-full relative" x-cloak>
+                <div class="text-xs font-bold text-slate-500 mb-2 pl-2"><i class="fa-solid fa-lightbulb text-yellow-500"></i> 滑鼠滾輪可縮放，拖曳可平移。您可清楚看見價格與各均線的相對位階。</div>
+                <div id="lwc-chart" style="width: 100%; height: 400px;" class="rounded-lg overflow-hidden border border-slate-100"></div>
+                <div class="mt-4 pb-2 flex flex-wrap gap-4 justify-center text-xs font-medium text-slate-600">
+                    <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#f59e0b] rounded"></div> 年線 (MA240)</span>
+                    <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#a855f7] rounded"></div> 十年線 (MA2400)</span>
+                    <span class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 bg-[#ef4444] rounded-sm"></div> 收盤上漲</span>
+                    <span class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 bg-[#22c55e] rounded-sm"></div> 收盤下跌</span>
+                    <span class="flex items-center gap-1.5 ml-2"><div class="w-2.5 h-2.5 bg-[#26a69a] rounded-sm opacity-50"></div> 底部成交量</span>
                 </div>
             </div>
 
             <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl shadow-xl border border-slate-700 p-6 md:p-8 mb-6 relative overflow-hidden text-white" x-transition>
                 <div class="absolute -top-6 -right-6 p-4 opacity-5 text-9xl"><i class="fa-solid fa-crosshairs"></i></div>
+                
                 <div class="flex flex-col md:flex-row gap-6 md:gap-10 items-center relative z-10">
                     <div class="flex-shrink-0 text-center">
-                        <div class="w-36 h-36 rounded-full border-4 flex items-center justify-center relative bg-slate-800 shadow-inner transition-colors duration-500" :class="{'border-purple-500': currentScore >= 80, 'border-red-500': currentScore >= 60 && currentScore < 80, 'border-orange-500': currentScore >= 40 && currentScore < 60, 'border-yellow-500': currentScore >= 20 && currentScore < 40, 'border-emerald-500': currentScore < 20}">
-                            <div class="text-5xl font-black" x-text="currentScore"></div><div class="absolute bottom-3 text-sm text-slate-400 font-medium">/ 100 分</div>
+                        <div class="w-36 h-36 rounded-full border-4 flex items-center justify-center relative bg-slate-800 shadow-inner transition-colors duration-500"
+                             :class="{'border-purple-500': currentScore >= 80, 'border-red-500': currentScore >= 60 && currentScore < 80, 'border-orange-500': currentScore >= 40 && currentScore < 60, 'border-yellow-500': currentScore >= 20 && currentScore < 40, 'border-emerald-500': currentScore < 20}">
+                            <div class="text-5xl font-black" x-text="currentScore"></div>
+                            <div class="absolute bottom-3 text-sm text-slate-400 font-medium">/ 100 分</div>
                         </div>
                     </div>
+
                     <div class="flex-1 w-full">
-                        <h2 class="text-xl font-bold mb-3 flex items-center gap-2"><i class="fa-solid fa-robot text-blue-400"></i> 系統綜合加碼建議</h2>
+                        <h2 class="text-xl font-bold mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-robot text-blue-400"></i> 系統綜合加碼建議
+                        </h2>
+                        
                         <div class="p-5 rounded-xl border mb-4 shadow-sm transition-colors duration-500 backdrop-blur-sm" :class="`${recommendation.bg} ${recommendation.border}`">
                             <div class="text-sm text-slate-300 mb-1">目前市場位階判斷：</div>
                             <div class="text-lg md:text-xl font-bold mb-3" :class="recommendation.color" x-text="recommendation.text"></div>
+                            
                             <div class="flex flex-col sm:flex-row sm:items-baseline gap-2 border-t border-slate-700/50 pt-3">
                                 <span class="text-sm text-slate-300">建議額外加碼金額：</span>
-                                <div><span class="text-3xl font-black text-white drop-shadow-sm" x-text="recommendation.amount > 0 ? formatMoney(recommendation.amount) + ' 元' : '0 元'"></span><span class="text-sm text-slate-400 ml-1" x-show="recommendation.mult > 0" x-text="`(平日均扣本金的 ${recommendation.mult} 倍)`"></span></div>
+                                <div>
+                                    <span class="text-3xl font-black text-white drop-shadow-sm" x-text="recommendation.amount > 0 ? formatMoney(recommendation.amount) + ' 元' : '0 元'"></span>
+                                    <span class="text-sm text-slate-400 ml-1" x-show="recommendation.mult > 0" x-text="`(平日均扣本金的 ${recommendation.mult} 倍)`"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1051,78 +1274,87 @@
 
                 <div class="mt-5 border-t border-slate-700/50 pt-5 relative z-10">
                     <div class="text-sm text-slate-300 mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-400 ml-1 hidden md:inline">(系統自動判定，可點擊沙盤推演)</span></span>
+                        <span><i class="fa-solid fa-list-check text-blue-400 mr-2"></i><strong>綜合評分指標面板</strong> <span class="text-xs text-slate-400 ml-1 hidden md:inline">(系統自動判定，您亦可點擊沙盤推演)</span></span>
                         <div class="flex items-center gap-3">
-                            <button @click="autoCheckIndicators()" class="text-xs text-emerald-400 hover:text-emerald-300 transition flex items-center gap-1 bg-slate-800 px-2 py-1.5 rounded-md border border-slate-600 shadow-sm" title="清除手動沙盤推演，恢復系統真實數據"><i class="fa-solid fa-rotate-left"></i> 恢復系統判定</button>
+                            <button @click="autoCheckIndicators()" class="text-xs text-emerald-400 hover:text-emerald-300 transition flex items-center gap-1 bg-slate-800 px-2 py-1.5 rounded-md border border-slate-600 shadow-sm" title="清除手動沙盤推演，恢復系統真實數據">
+                                <i class="fa-solid fa-rotate-left"></i> 恢復系統判定
+                            </button>
                             <button @click="activeTab = 'report'; window.scrollTo(0,0);" class="text-xs text-blue-400 hover:text-blue-300 underline">指標詳細解說 >></button>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <label class="indicator-card"><input type="checkbox" x-model="cond_k" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">短線 K值 < 20</span><strong class="text-blue-400">+10分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="cond_ma240" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">跌破年線 (MA240)</span><strong class="text-blue-400">+15分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="cond_ma120" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">跌破十年線 (MA2400)</span><strong class="text-blue-400">+20分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="cond_pb" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">大盤淨值比 < 1.6</span><strong class="text-blue-400">+15分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="isBlueLight" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">景氣燈號為藍燈</span><strong class="text-blue-400">+20分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="isPanic" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">市場極度恐慌/斷頭</span><strong class="text-blue-400">+10分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="cond_cost90" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">市價低於均價 10%</span><strong class="text-blue-400">+5分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="cond_cost80" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">市價低於均價 20%</span><strong class="text-blue-400">+5分</strong></label>
-                        <label class="indicator-card"><input type="checkbox" x-model="cond_discount" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500"><span class="flex-1">ETF 呈現折價</span><strong class="text-blue-400">+5分</strong></label>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 主控台股價時光機 -->
-            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition mb-6">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 border-b border-slate-100 pb-4">
-                    <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">
-                        <i class="fa-solid fa-clock-rotate-left text-indigo-500"></i> 股價時光機 (歷史報價查詢)
-                    </h3>
-                    <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <input type="date" x-model="queryDate" @change="lookupHistoricalPrice" class="w-full sm:w-40 px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition">
-                    </div>
-                </div>
-                
-                <div class="relative min-h-[4rem]">
-                    <div x-show="!historicalDataLoaded" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
-                        <i class="fa-solid fa-spinner fa-spin mr-2"></i> 歷史資料載入中...
-                    </div>
                     
-                    <div x-show="historicalDataLoaded" x-cloak>
-                        <div x-show="queryResult && queryResult.found" class="grid grid-cols-3 gap-4 text-center">
-                            <div class="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
-                                <div class="text-xs text-indigo-500 mb-1 font-bold">最高價</div><div class="text-lg font-black text-indigo-900" x-text="queryResult ? queryResult.high : '-'"></div>
-                            </div>
-                            <div class="bg-indigo-50 rounded-xl p-3 border border-indigo-500 shadow-sm relative overflow-hidden">
-                                <div class="absolute top-0 right-0 w-8 h-8 bg-indigo-500 rotate-45 translate-x-4 -translate-y-4"></div>
-                                <div class="text-xs text-indigo-500 mb-1 font-bold">收盤價</div><div class="text-2xl font-black text-indigo-900" x-text="queryResult ? queryResult.close : '-'"></div>
-                            </div>
-                            <div class="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
-                                <div class="text-xs text-indigo-500 mb-1 font-bold">最低價</div><div class="text-lg font-black text-indigo-900" x-text="queryResult ? queryResult.low : '-'"></div>
-                            </div>
-                        </div>
-                        <div x-show="queryResult && !queryResult.found" class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-slate-500 text-sm flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-bed"></i> 該日無交易資料，可能為週休二日或國定假日。
-                        </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="cond_k" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">短線 K值 < 20</span>
+                            <strong class="text-blue-400">+10分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="cond_ma240" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">跌破年線 (MA240)</span>
+                            <strong class="text-blue-400">+15分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="cond_ma120" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">跌破十年線 (MA2400)</span>
+                            <strong class="text-blue-400">+20分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="cond_pb" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">大盤淨值比 < 1.6</span>
+                            <strong class="text-blue-400">+15分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="isBlueLight" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">景氣燈號為藍燈</span>
+                            <strong class="text-blue-400">+20分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="isPanic" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">市場極度恐慌/斷頭</span>
+                            <strong class="text-blue-400">+10分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="cond_cost90" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">市價低於均價 10%</span>
+                            <strong class="text-blue-400">+5分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="cond_cost80" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">市價低於均價 20%</span>
+                            <strong class="text-blue-400">+5分</strong>
+                        </label>
+                        <label class="indicator-card">
+                            <input type="checkbox" x-model="cond_discount" class="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-500 focus:ring-blue-600 focus:ring-offset-slate-800">
+                            <span class="flex-1">ETF 呈現折價</span>
+                            <strong class="text-blue-400">+5分</strong>
+                        </label>
                     </div>
                 </div>
             </div>
-            
         </div>
 
         <!-- 【分頁二：深度報告】 -->
         <div x-show="activeTab === 'report'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
+            
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-10">
                 <div class="bg-slate-50 border-b border-slate-200 p-5">
-                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-book-open text-secondary"></i> 0050 深度投資洞察報告</h2>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-book-open text-secondary"></i> 0050 深度投資洞察報告
+                    </h2>
                     <p class="text-sm text-slate-500 mt-1">此報告結合目前真實數據與技術原理解說，為您剖析當下各項指標狀態。</p>
                 </div>
+                
                 <div class="p-6 space-y-8 text-slate-700 leading-relaxed">
+                    
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">一、 技術面指標 (價格與動能)</h3>
+                        
                         <div class="space-y-6 pl-2">
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-bolt text-yellow-500"></i>短線狀態 (動能與情緒)</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 主要參考 KDJ 指標。KDJ 透過比較一段時間內的收盤價與最高/最低價，來衡量市場的「超買」或「超賣」情緒。當K值低於20時，代表近期股價在區間內接近低點，短線市場情緒偏悲觀，確實常出現反彈。但要留意，超跌不等於最低點，在空頭市場中，K值可能長時間停留在低檔，如果你一看到 K < 20 就把子彈打光，後續真正見到底部時，你反而沒錢加碼，這在心理上會造成巨大的挫折感。因此把 K < 20 當作「短線加碼參考」，是合理的，但不適合當作唯一依據。</p>
+                                
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
                                     <div x-show="historicalDataLoaded">
@@ -1136,9 +1368,11 @@
                                     <div x-show="!historicalDataLoaded" class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</div>
                                 </div>
                             </div>
+
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-chart-line text-blue-500"></i>中線趨勢 (均線價值)</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 參考 240 日移動平均線 (年線)。年線代表了過去一年內所有買進這檔股票投資人的「平均成本」。MA240大約相當於一年的交易日均線，因此很多人會把它視為「長期趨勢線」。當價格跌破 MA240 時，通常意味著市場進入修正或空頭階段、投資情緒明顯轉弱。像 2022年全球升息循環時，台股就曾跌破長期均線。對長期投資人來說，跌破年線常代表一件事：市場已經出現明顯修正，是非常合理的加碼點。如果此時進行額外加碼，長期平均成本通常會下降，因此把「跌破 MA240」當作加碼參考，是相對合理的做法。</p>
+                                
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
                                     <div x-show="historicalDataLoaded && calc_ma240 > 0">
@@ -1151,9 +1385,11 @@
                                     <div x-show="!historicalDataLoaded || calc_ma240 === 0" class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</div>
                                 </div>
                             </div>
+
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-purple-500"></i>長線防線 (十年線/極端支撐)</h4>
-                                <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 雖然常看半年線做防守，但若拉長視角看日K線的MA2400，代表大約10年的長期平均成本，也是所謂的「十年線」。這種長期均線很少被跌破，通常只有發生金融危機或全球性災難才會看到。當市場跌到這個位置時，往往代表市場已經進入極度恐慌狀態。如果長期投資人有能力加碼，這往往是歷史上相對罕見的低點區域。但這種機會可能5～10年才出現一次。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 定期定額實務上，原本常看半年線 (120日均線) 作為防守關卡。但若拉長視角看月K線的MA120，代表大約10年的長期平均成本，也是所謂的「十年線」。這種長期均線很少被跌破，通常只有發生金融危機或全球性災難才會看到，例如2008年金融海嘯、2020年疫情股災。當市場跌到這個位置時，往往代表市場已經進入極度恐慌狀態。如果長期投資人有能力加碼，這往往是歷史上相對罕見的低點區域。但這種機會可能5～10年才出現一次，因此它更像是「極端加碼訊號」，而不是日常投資需要追蹤的指標。</p>
+                                
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
                                     <div x-show="historicalDataLoaded && calc_ma120 > 0">
@@ -1169,9 +1405,11 @@
                                     </div>
                                 </div>
                             </div>
+                            
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-user-tag text-teal-500"></i>個人部位修正</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 與大盤技術面無關，單純評估個人的持有成本。市價遠低於均價時加碼，能有效攤平、降低回本難度。</p>
+                                
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 您目前的狀態：</div>
                                     <div>
@@ -1186,87 +1424,141 @@
                             </div>
                         </div>
                     </section>
+
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">二、 總體經濟與大盤指標 (基本面)</h3>
+                        
                         <div class="space-y-6 pl-2">
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-scale-balanced text-emerald-500"></i>大盤位階 (股價淨值比 P/B)</h4>
                                 <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 將台股總市值除以所有上市公司的淨值總和。代表投資人願意用多少倍的價格去買企業的真實資產。</p>
                                 <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當大盤 P/B 跌至 1.5 倍甚至 1.3 倍以下時，代表整體台股被嚴重低估，企業資產正在「打折出售」，此時買進具備極高的安全邊際。</p>
+                                
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
                                     <p class="text-sm text-slate-700" x-show="pbRatio !== null && pbRatio !== 'API阻擋' && pbRatio !== '無資料'">目前 0050 最新股價淨值比 (P/B) 約為 <span class="font-bold text-emerald-600" x-text="pbRatio"></span> 倍。</p>
                                     <p class="text-sm text-red-500" x-show="pbRatio === 'API阻擋' || pbRatio === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 自動抓取失敗 (API阻擋)，這項數值通常不易變動，請作為手動輔助參考。</p>
                                     <p class="text-sm text-slate-500" x-show="pbRatio === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由證交所讀取中...</p>
                                 </div>
+
+                                <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手動至證交所確認最新大盤淨值比。</p>
+                                    <a href="https://www.twse.com.tw/zh/trading/historical/bwibbu.html" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往證交所查詢
+                                    </a>
+                                </div>
                             </div>
+
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 opacity-90">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-traffic-light text-red-500"></i>景氣循環 (國發會景氣燈號)</h4>
+                                <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 國發會每月公佈的信號，綜合了出口、股價、就業等數據，反映台灣整體的經濟冷熱。</p>
                                 <p class="text-sm mb-2 text-slate-600"><strong>觀察重點：</strong> 股市領先基本面。「藍燈」代表景氣最低迷、百業蕭條，但此時往往是股市的長線最低點。「買在藍燈、賣在紅燈」是 0050 勝率極高的經典策略。</p>
                                 <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <a href="https://index.ndc.gov.tw/n/zh_tw" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-bold text-sm transition whitespace-nowrap shadow-sm"><i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往國發會查詢</a>
+                                    <p class="text-xs text-slate-500">※ 註：此資料因發布格式原因無法穩定自動抓取，請手動查詢當月燈號。</p>
+                                    <a href="https://index.ndc.gov.tw/n/zh_tw" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往國發會查詢
+                                    </a>
                                 </div>
                             </div>
                         </div>
                     </section>
+
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-2 border-l-4 border-primary pl-3">三、 籌碼與交易面指標 (情緒面)</h3>
                         <p class="text-xs text-slate-500 mb-4 pl-3">此區塊為極端市況的觀察輔助。</p>
+                        
                         <div class="space-y-6 pl-2">
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-water text-cyan-500"></i>市場恐慌度 (大盤融資餘額)</h4>
-                                <p class="text-sm mb-2 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
+                                <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 觀察散戶的「融資餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
+
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
                                     <p class="text-sm text-slate-700" x-show="marginBalance !== null && marginBalance !== 'API阻擋' && marginBalance !== '無資料'">目前大盤融資餘額為 <span class="font-bold text-cyan-600" x-text="marginBalance"></span>。</p>
-                                    <p class="text-sm text-red-500" x-show="marginBalance === 'API阻擋' || marginBalance === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 自動抓取失敗，請手動確認。</p>
-                                    <p class="text-sm text-slate-500" x-show="marginBalance === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 讀取中...</p>
+                                    <p class="text-sm text-red-500" x-show="marginBalance === 'API阻擋' || marginBalance === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 自動抓取失敗 (網路連線或API阻擋)，請手動確認。</p>
+                                    <p class="text-sm text-slate-500" x-show="marginBalance === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由證交所讀取中...</p>
+                                </div>
+
+                                <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <p class="text-xs text-slate-500">※ 註：若自動抓取失敗，可手動至證交所確認融資餘額變化。</p>
+                                    <a href="https://www.twse.com.tw/zh/trading/margin/mi-margn.html" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-cyan-100 text-cyan-700 rounded-lg hover:bg-cyan-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往證交所查詢
+                                    </a>
                                 </div>
                             </div>
+
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 opacity-90">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-tags text-orange-500"></i>ETF 淨值折價</h4>
+                                <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 0050 是一籃子股票，這些股票當下的真實總價值為「淨值」，而您在市場上的買賣價為「市價」。</p>
                                 <p class="text-sm mb-2 text-slate-600"><strong>觀察重點：</strong> 當市場出現恐慌拋售導致「市價 < 淨值」時，稱為折價。這等於您可以立刻用低於真實價值的折扣價買到台股前 50 大企業。</p>
+                                
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm mb-4">
                                     <div class="text-sm font-bold mb-1">💡 目前即時折溢價：</div>
                                     <p class="text-sm text-slate-700" x-show="etfDiscount !== null && etfDiscount !== 'API阻擋' && etfDiscount !== '無資料'">系統嘗試為您抓取最新估計折溢價為： <span class="font-bold text-orange-600" x-text="etfDiscount"></span></p>
                                     <p class="text-sm text-red-500" x-show="etfDiscount === 'API阻擋' || etfDiscount === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 網頁防護阻擋自動抓取，請點擊下方按鈕直接查看官網。</p>
-                                    <p class="text-sm text-slate-500" x-show="etfDiscount === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 讀取中...</p>
+                                    <p class="text-sm text-slate-500" x-show="etfDiscount === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由元大官網讀取中...</p>
                                 </div>
+
                                 <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <a href="https://www.yuantaetfs.com/tradeInfo/comparison/0050/NAVhistory#table" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 font-bold text-sm transition whitespace-nowrap shadow-sm"><i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往元大官網查詢</a>
+                                    <p class="text-xs text-slate-500">※ 註：若有重大行情波動，請務必手動進入官網以獲得最精準的數值。</p>
+                                    <a href="https://www.yuantaetfs.com/tradeInfo/comparison/0050/NAVhistory#table" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
+                                        <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往元大官網查詢
+                                    </a>
                                 </div>
                             </div>
                         </div>
                     </section>
                     
+                    <!-- 【核心更新】四、 退休與財務自由 (Guyton-Klinger 動態提領護欄) -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">四、 退休與財務自由 (清流君動態提領護欄)</h3>
+                        
                         <div class="space-y-6 pl-2">
                             <div class="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
                                 <h4 class="font-bold text-indigo-900 mb-3 flex items-center gap-2"><i class="fa-solid fa-piggy-bank text-indigo-500"></i>Guyton-Klinger 動態提領策略</h4>
                                 <p class="text-sm mb-3 text-indigo-800 leading-relaxed">
                                     <strong>⭐ 清流君流派核心：護欄機制 (Guardrails)</strong><br>
-                                    傳統 4% 固定提領在遇到「股災」時，會強迫你在低點賣出大量股票。動態提領則是<span class="font-bold underline">看當下總資產吃飯</span>，設定提領率的上下限（通常為基準的 ±20%，即 3.2% ~ 4.8%）。<br>
-                                    <strong>當股市大漲時，給自己加薪 10% 享受生活；當股市暴跌時，共體時艱減薪 10%。</strong>
+                                    傳統 4% 固定提領在遇到「股災」時，會強迫你在低點賣出大量股票，容易引發危機。動態提領則是<span class="font-bold underline">看當下總資產吃飯</span>，設定提領率的上下限（通常為基準的 ±20%，即 3.2% ~ 4.8%）。<br>
+                                    <strong>當股市大漲時，給自己加薪 10% 享受生活；當股市暴跌時，共體時艱減薪 10%。</strong>清流君回測證實，即使在 2004 年金融海嘯前夕投入 0050，使用此機制依然能安全撐過 20 年以上！
                                 </p>
                                 <p class="text-sm mb-4 text-indigo-800 leading-relaxed">
-                                    <strong>沒有高配息怎麼辦？</strong> 0050 配息率約 2.5%~3.5%。不足的部分，您只需在領息後<strong>「賣出少許零股」</strong>即可。
+                                    <strong>沒有高配息怎麼辦？</strong> 0050 配息率約 2.5%~3.5%。不足的部分，您只需在領息後<strong>「賣出少許零股」</strong>即可。市值型 ETF 靠的是股價長期成長，賣零股換生活費是維持資產不竭的最佳做法。
+                                </p>
+                                <p class="text-sm text-indigo-800 leading-relaxed mb-5">
+                                    <strong>防禦機制 (極度重要)：</strong> 退休前請務必準備 <strong>2~3 年生活費的「現金緩衝墊」</strong>（放定存或高利活存）。當遇到像 2008 年級別的股災，帳面重挫時，那兩年就<span class="text-red-500 font-bold">絕對不要賣股票</span>，改用這筆現金生活。
                                 </p>
 
+                                <!-- 提領試算工具 -->
                                 <div class="p-4 bg-white rounded-xl border border-indigo-200 shadow-sm">
-                                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-indigo-100"><i class="fa-solid fa-compass-drafting text-indigo-500"></i><h5 class="font-bold text-indigo-900">專屬您的動態提領導航儀</h5></div>
+                                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-indigo-100">
+                                        <i class="fa-solid fa-compass-drafting text-indigo-500"></i>
+                                        <h5 class="font-bold text-indigo-900">專屬您的動態提領導航儀</h5>
+                                    </div>
+
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-5">
+                                        <!-- 目標設定區 -->
                                         <div>
                                             <label class="block text-sm font-bold text-slate-700 mb-2">您期望的退休「每月」預算：</label>
                                             <div class="flex items-center gap-2 mb-3">
-                                                <input type="number" x-model.number="targetMonthlyExpense" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition font-bold text-indigo-700"><span class="text-sm text-slate-600">元</span>
+                                                <input type="number" x-model.number="targetMonthlyExpense" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition font-bold text-indigo-700">
+                                                <span class="text-sm text-slate-600">元</span>
                                             </div>
-                                            <div class="text-xs text-slate-500 bg-slate-50 p-2 rounded">基準 4% 法則目標總資產：<br><strong class="text-lg text-indigo-700" x-text="formatMoney(targetFireFund) + ' 元'"></strong></div>
+                                            <div class="text-xs text-slate-500 bg-slate-50 p-2 rounded">
+                                                基準 4% 法則目標總資產：<br>
+                                                <strong class="text-lg text-indigo-700" x-text="formatMoney(targetFireFund) + ' 元'"></strong>
+                                            </div>
                                         </div>
+
+                                        <!-- 現況區 -->
                                         <div>
                                             <div class="text-sm text-slate-600 mb-1">您目前的 0050 總市值：</div>
                                             <div class="text-2xl font-black text-slate-800 mb-3" x-text="formatMoney(marketValueNum) + ' 元'"></div>
-                                            <div class="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden"><div class="bg-indigo-500 h-3 rounded-full transition-all duration-1000" :style="`width: ${fireProgress}%`"></div></div>
+                                            
+                                            <!-- 財務自由進度條 -->
+                                            <div class="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden">
+                                                <div class="bg-indigo-500 h-3 rounded-full transition-all duration-1000" :style="`width: ${fireProgress}%`"></div>
+                                            </div>
                                             <div class="flex justify-between items-center text-xs font-bold text-indigo-700 mt-2">
                                                 <span>當前提領率：<span x-text="marketValueNum > 0 ? (currentWithdrawalRate * 100).toFixed(2) + '%' : '0%'"></span></span>
                                                 <span>進度：<span x-text="fireProgress + '%'"></span></span>
@@ -1274,13 +1566,21 @@
                                         </div>
                                     </div>
 
+                                    <!-- GK 動態結果面板 -->
                                     <div class="p-4 rounded-lg border transition-colors duration-500" :class="`${gkStatus.bg} ${gkStatus.border}`">
-                                        <div class="text-sm font-black mb-2 flex items-center gap-2" :class="gkStatus.color"><span x-text="gkStatus.title"></span></div>
+                                        <div class="text-sm font-black mb-2 flex items-center gap-2" :class="gkStatus.color">
+                                            <span x-text="gkStatus.title"></span>
+                                        </div>
                                         <div class="text-sm text-slate-700 mb-4 leading-relaxed" x-text="gkStatus.desc"></div>
+                                        
                                         <div class="border-t border-slate-200/50 pt-3 flex flex-col sm:flex-row sm:items-baseline gap-2">
                                             <span class="text-sm text-slate-600 font-bold" x-text="gkStatus.state === 'accumulating' ? '此總市值目前安全月提領：' : '本月建議提領/扣款金：'"></span>
                                             <span class="text-3xl font-black" :class="gkStatus.color" x-text="formatMoney(gkStatus.recommendedMonthly) + ' 元'"></span>
                                         </div>
+                                    </div>
+                                    
+                                    <div class="mt-4 pt-3 border-t border-indigo-100 text-xs text-slate-500 flex flex-col sm:flex-row justify-between gap-2">
+                                        <span>※ 實務操作：0050 會配息，因此您只需在每年初將 (預算差額) 賣出零股，放入銀行分批使用即可。</span>
                                     </div>
                                 </div>
                             </div>
@@ -1292,6 +1592,7 @@
 
         <!-- 【分頁三：系統設定】 -->
         <div x-show="activeTab === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
+            
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-2xl mx-auto mb-10">
                 <h2 class="text-xl font-bold text-slate-800 mb-6 border-b pb-3"><i class="fa-solid fa-sliders text-secondary mr-2"></i>基礎部位與定期定額設定</h2>
                 
@@ -1300,118 +1601,220 @@
                         <h3 class="font-bold text-slate-700 mb-4 text-sm flex items-center justify-between">
                             <span><i class="fa-solid fa-box-open mr-2"></i>第一步：輸入期初(或總結)庫存</span>
                         </h3>
+                        
                         <p class="text-xs text-slate-500 mb-4 leading-relaxed">
                             若您不需計算精準的年化報酬率，可直接輸入目前的總結庫存，系統會以此為基礎開始往上加總。<br>
-                            <span class="text-blue-600 font-bold">💡 提示：</span>如果您打算在「第四步」逐筆輸入完整的歷史買賣紀錄來精算 XIRR，<span class="text-red-500 font-bold underline">請務必將此處設為 0</span>！
+                            <span class="text-blue-600 font-bold">💡 提示：</span>如果您打算在「第四步」逐筆輸入完整的歷史買賣紀錄來精算 XIRR，<span class="text-red-500 font-bold underline">請務必將此處設為 0</span>，交由系統透過明細自動加總即可！
                         </p>
+
+                        <!-- 智能防呆警告：當使用者有手動輸入歷史明細，但期初庫存又大於 0 時觸發 -->
                         <div x-show="baseShares > 0 && transactions.length > 0" class="mb-5 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 shadow-sm" x-cloak>
                             <div class="flex items-start gap-3">
                                 <i class="fa-solid fa-triangle-exclamation text-lg mt-0.5"></i>
                                 <div class="flex-1">
                                     <strong class="text-base block mb-1">⚠️ 發現庫存重複計算風險！</strong>
-                                    系統會將此處的「期初庫存」與第四步的「歷史明細」相加。如果您已輸入歷史明細，請點擊下方按鈕將期初庫存歸零。
-                                    <button @click="baseShares = 0; baseAvgCost = 0; saveData()" class="mt-3 block w-full sm:w-auto text-center text-xs bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-bold transition shadow-sm"><i class="fa-solid fa-eraser mr-1"></i> 我已輸入明細，將期初庫存歸零</button>
+                                    系統會將此處的「期初庫存」與第四步的「歷史明細」相加。如果您在第四步輸入的明細，已經包含了您全部的持股過程，請點擊下方按鈕將期初庫存歸零，否則您的總股數將會膨脹成大約 2 倍！
+                                    <button @click="baseShares = 0; baseAvgCost = 0; saveData()" class="mt-3 block w-full sm:w-auto text-center text-xs bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-bold transition shadow-sm">
+                                        <i class="fa-solid fa-eraser mr-1"></i> 我已輸入明細，將期初庫存歸零
+                                    </button>
                                 </div>
                             </div>
                         </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label class="block text-sm font-medium text-slate-600 mb-1">期初庫存量 (股)</label><input type="number" x-model.number="baseShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition"></div>
-                            <div><label class="block text-sm font-medium text-slate-600 mb-1">期初買入均價 (元)</label><input type="number" step="0.01" x-model.number="baseAvgCost" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition"></div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">期初庫存量 (股)</label>
+                                <input type="number" x-model.number="baseShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">期初買入均價 (元)</label>
+                                <input type="number" step="0.01" x-model.number="baseAvgCost" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                            </div>
                         </div>
                     </div>
 
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
                         <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-calendar-check mr-2"></i>第二步：設定自動記帳規則</h3>
+                        <p class="text-xs text-slate-500 mb-4">您可以自由設定多筆扣款日與對應金額，系統會在經過扣款日時，自動將股數累加到庫存中。</p>
+                        
                         <div class="space-y-4">
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">自動記帳啟提日<span class="text-xs text-slate-400 font-normal block mt-1">※ 告訴系統從哪天開始幫您自動記帳。請設定今天或未來的日期。</span></label>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">
+                                    自動記帳啟提日
+                                    <span class="text-xs text-slate-400 font-normal block mt-1">※ 告訴系統從哪天開始幫您自動記帳。請設定今天或未來的日期，避免舊庫存被重複計算。</span>
+                                </label>
                                 <input type="date" x-model="startDate" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
+
                             <div class="pt-2">
                                 <label class="block text-sm font-medium text-slate-600 mb-2">每月扣款日期與金額設定</label>
                                 <div class="space-y-3">
                                     <template x-for="(plan, index) in investmentPlans" :key="plan.id">
                                         <div class="flex items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
                                             <div class="flex-1 flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                                                <span class="text-sm text-slate-600 whitespace-nowrap">每月</span><input type="number" min="1" max="31" x-model.number="plan.day" class="w-16 px-2 py-1 text-center border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition"><span class="text-sm text-slate-600 whitespace-nowrap">號，扣款</span><input type="number" min="0" x-model.number="plan.amount" class="w-24 px-2 py-1 text-right border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition"><span class="text-sm text-slate-600 whitespace-nowrap">元</span>
+                                                <span class="text-sm text-slate-600 whitespace-nowrap">每月</span>
+                                                <input type="number" min="1" max="31" x-model.number="plan.day" class="w-16 px-2 py-1 text-center border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                                <span class="text-sm text-slate-600 whitespace-nowrap">號，扣款</span>
+                                                <input type="number" min="0" x-model.number="plan.amount" class="w-24 px-2 py-1 text-right border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                                <span class="text-sm text-slate-600 whitespace-nowrap">元</span>
                                             </div>
-                                            <button @click="removePlan(plan.id)" class="text-slate-400 hover:text-red-500 p-2 transition"><i class="fa-solid fa-trash-can"></i></button>
+                                            <button @click="removePlan(plan.id)" class="text-slate-400 hover:text-red-500 p-2 transition" title="刪除此設定"><i class="fa-solid fa-trash-can"></i></button>
                                         </div>
                                     </template>
-                                    <button @click="addPlan()" class="text-sm text-secondary hover:text-blue-700 font-bold flex items-center gap-1 mt-3 px-2 py-1 rounded hover:bg-blue-50 transition"><i class="fa-solid fa-circle-plus"></i> 新增扣款日</button>
+                                    
+                                    <button @click="addPlan()" class="text-sm text-secondary hover:text-blue-700 font-bold flex items-center gap-1 mt-3 px-2 py-1 rounded hover:bg-blue-50 transition">
+                                        <i class="fa-solid fa-circle-plus"></i> 新增扣款日
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
-                        <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加減碼 (智慧帶入歷史股價)</h3>
-                        <p class="text-xs text-slate-500 mb-4">選擇日期後，系統會嘗試為您帶入當日的收盤價！</p>
+                        <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加減碼 (不影響自動扣款設定)</h3>
+                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進、逢高減碼，或是<strong class="text-blue-600">想直接輸入券商最終數據來校正月底誤差</strong>時，可直接在此輸入。</p>
+                        
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                            <div class="col-span-2 md:col-span-1"><label class="block text-sm font-medium text-slate-600 mb-1">交易日期</label><input type="date" x-model="manualDate" @change="onManualDateChange()" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition"></div>
+                            <div class="col-span-2 md:col-span-1">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">交易日期</label>
+                                <input type="date" x-model="manualDate" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                            </div>
                             <div class="col-span-2 md:col-span-1">
                                 <label class="block text-sm font-medium text-slate-600 mb-1">動作</label>
-                                <select x-model="manualAction" @change="onManualDateChange()" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold" :class="{'text-red-500 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-amber-600 bg-amber-50': manualAction === 'dividend', 'text-purple-600 bg-purple-50': manualAction === 'sync'}">
-                                    <option value="buy">買入</option><option value="sell">賣出</option><option value="dividend">配息</option><option value="sync">庫存校正</option>
+                                <select x-model="manualAction" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold" :class="{'text-red-500 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-amber-600 bg-amber-50': manualAction === 'dividend', 'text-purple-600 bg-purple-50': manualAction === 'sync'}">
+                                    <option value="buy">買入</option>
+                                    <option value="sell">賣出</option>
+                                    <option value="dividend">配息</option>
+                                    <option value="sync">庫存校正</option>
                                 </select>
                             </div>
-                            <div class="col-span-1" x-show="manualAction !== 'dividend'"><label class="block text-sm font-medium text-slate-600 mb-1" x-text="manualAction === 'sync' ? '實際總股數' : '股數'"></label><input type="number" x-model.number="manualShares" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100"></div>
-                            <div class="col-span-1" x-show="manualAction !== 'dividend'"><label class="block text-sm font-medium text-slate-600 mb-1" x-text="manualAction === 'sync' ? '實際平均成本' : '單價'"></label><input type="number" step="0.01" x-model.number="manualPrice" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 150"></div>
-                            <div class="col-span-2" x-show="manualAction === 'dividend'" x-cloak><label class="block text-sm font-medium text-slate-600 mb-1">配息總金額 (元)</label><input type="number" x-model.number="manualAmount" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 5000"></div>
+                            <div class="col-span-1" x-show="manualAction !== 'dividend'">
+                                <label class="block text-sm font-medium text-slate-600 mb-1" x-text="manualAction === 'sync' ? '實際總股數' : '股數'"></label>
+                                <input type="number" x-model.number="manualShares" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100">
+                            </div>
+                            <div class="col-span-1" x-show="manualAction !== 'dividend'">
+                                <label class="block text-sm font-medium text-slate-600 mb-1" x-text="manualAction === 'sync' ? '實際平均成本' : '單價'"></label>
+                                <input type="number" step="0.01" x-model.number="manualPrice" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 150">
+                            </div>
+                            <div class="col-span-2" x-show="manualAction === 'dividend'" x-cloak>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">配息總金額 (元)</label>
+                                <input type="number" x-model.number="manualAmount" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 5000">
+                            </div>
                         </div>
-                        <div class="mt-2 text-xs" :class="manualDateHint.includes('⚠️') ? 'text-red-500' : 'text-blue-600'" x-show="manualDateHint !== ''" x-text="manualDateHint" x-cloak></div>
-                        <div class="mt-4 text-right"><button @click="executeManualAdd()" class="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition shadow-sm"><i class="fa-solid fa-calculator mr-1"></i> 計算並加入帳本</button></div>
+                        <div class="mt-4 text-right">
+                            <button @click="executeManualAdd()" class="px-6 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition shadow-sm">
+                                <i class="fa-solid fa-calculator mr-1"></i> 計算並加入帳本
+                            </button>
+                        </div>
                     </div>
 
                     <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
                         <h3 class="font-bold text-slate-700 mb-4 text-sm flex items-center justify-between">
-                            <span><i class="fa-solid fa-list-ul mr-2 text-blue-600"></i>第四步：歷史交易明細管理 (XIRR 專用)</span><span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-md font-bold shadow-sm">進階精算</span>
+                            <span><i class="fa-solid fa-list-ul mr-2 text-blue-600"></i>第四步：歷史交易明細管理 (XIRR 專用)</span>
+                            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-md font-bold shadow-sm">進階精算</span>
                         </h3>
+                        <p class="text-xs text-slate-500 mb-4">
+                            系統的自動定期定額與單筆紀錄都會顯示在此。您可以點擊「新增一筆交易」來補足過去不同金額的扣款紀錄。這些完整紀錄是計算精確 XIRR 的核心資料。
+                        </p>
+                        
+                        <!-- 加上 id="txnList" 讓 JavaScript 可以抓到這個容器來控制捲軸 -->
                         <div id="txnList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             <template x-for="(txn, index) in transactions" :key="txn.id">
                                 <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative transition-all hover:border-blue-300">
                                     <div class="flex items-center gap-2 w-full sm:w-auto">
+                                        <!-- Date -->
                                         <input type="date" x-model="txn.date" class="w-32 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
+                                        <!-- Action -->
                                         <select x-model="txn.action" class="w-24 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition font-bold" :class="{'text-red-500 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
-                                            <option value="buy">買入</option><option value="sell">賣出</option><option value="dividend">配息</option><option value="sync">微調差額</option>
+                                            <option value="buy">買入</option>
+                                            <option value="sell">賣出</option>
+                                            <option value="dividend">配息</option>
+                                            <option value="sync">微調差額</option>
                                         </select>
                                     </div>
+
+                                    <!-- Amount & Shares -->
                                     <div class="flex-1 flex items-center gap-2 mt-2 sm:mt-0">
+                                        <!-- 把 min="0" 拿掉，因為微調差額有可能是負數 (代表你買得比系統算的便宜) -->
                                         <input type="number" x-model.number="txn.amount" placeholder="總金額" class="w-full sm:w-28 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">元,</span>
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action === 'dividend'" x-cloak>元</span>
                                         <input type="number" x-model.number="txn.shares" placeholder="股數" class="w-full sm:w-24 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition" x-show="txn.action !== 'dividend'">
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">股</span>
                                     </div>
-                                    <button @click="removeTransaction(txn.id)" class="absolute top-2 right-2 sm:static sm:ml-auto text-slate-300 hover:text-red-500 p-2 transition" title="刪除此紀錄"><i class="fa-solid fa-trash-can"></i></button>
+
+                                    <!-- Delete -->
+                                    <button @click="removeTransaction(txn.id)" class="absolute top-2 right-2 sm:static sm:ml-auto text-slate-300 hover:text-red-500 p-2 transition" title="刪除此紀錄">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
                                 </div>
                             </template>
-                            <div x-show="transactions.length === 0" class="text-center text-slate-400 text-sm py-6 border-2 border-dashed border-slate-200 rounded-lg bg-white/50"><i class="fa-solid fa-box-open text-2xl mb-2 opacity-50 block"></i>目前尚無任何歷史交易紀錄</div>
-                        </div>
-                        <div class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-blue-100">
-                            <button @click="clearTransactions()" class="text-sm text-red-500 hover:text-red-700 font-bold transition flex items-center px-2 py-1 rounded hover:bg-red-50"><i class="fa-solid fa-trash-can mr-1"></i> 清空所有明細</button>
-                            <div class="flex items-center gap-2"><button @click="addTransaction()" class="text-sm text-secondary hover:text-blue-700 font-bold flex items-center gap-1 px-4 py-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-100 transition shadow-sm"><i class="fa-solid fa-plus"></i> 新增一筆交易</button></div>
-                        </div>
-                    </div>
 
-                    <div class="bg-purple-50 p-5 rounded-xl border border-purple-100">
-                        <h3 class="font-bold text-purple-800 mb-4 text-sm flex items-center justify-between"><span><i class="fa-solid fa-cloud-arrow-down mr-2"></i>第五步：全系統雲端備份與還原</span></h3>
-                        <p class="text-xs text-purple-700 mb-4 leading-relaxed">您的資料僅儲存在這台裝置的瀏覽器中。強烈建議您定期點擊「備份資料」，並將下載的檔案存入 <b>Google 雲端硬碟</b>。</p>
-                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                            <button @click="exportSystemBackup()" class="px-5 py-2.5 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition shadow-sm flex items-center gap-2"><i class="fa-solid fa-download"></i> 下載備份檔 (.json)</button>
-                            <div class="relative w-full sm:w-auto mt-2 sm:mt-0">
-                                <input type="file" accept=".json" id="importBackupFile" class="hidden" @change="importSystemBackup($event)">
-                                <label for="importBackupFile" class="cursor-pointer px-5 py-2.5 bg-white text-purple-600 font-bold rounded-lg border border-purple-300 hover:bg-purple-100 transition shadow-sm flex items-center gap-2 justify-center"><i class="fa-solid fa-upload"></i> 從備份檔還原</label>
+                            <div x-show="transactions.length === 0" class="text-center text-slate-400 text-sm py-6 border-2 border-dashed border-slate-200 rounded-lg bg-white/50">
+                                <i class="fa-solid fa-box-open text-2xl mb-2 opacity-50 block"></i>
+                                目前尚無任何歷史交易紀錄
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-blue-100">
+                            <button @click="clearTransactions()" class="text-sm text-red-500 hover:text-red-700 font-bold transition flex items-center px-2 py-1 rounded hover:bg-red-50">
+                                <i class="fa-solid fa-trash-can mr-1"></i> 清空所有明細
+                            </button>
+                            <div class="flex items-center gap-2">
+                                <button @click="addTransaction()" class="text-sm text-secondary hover:text-blue-700 font-bold flex items-center gap-1 px-4 py-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-100 transition shadow-sm">
+                                    <i class="fa-solid fa-plus"></i> 新增一筆交易
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <div class="text-center pt-4"><button @click="activeTab = 'dashboard'; window.scrollTo(0,0); window.location.reload();" class="px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition shadow-md">儲存並重新運算 (返回主控台)</button></div>
+                    <!-- 第五步：全系統備份與還原 -->
+                    <div class="bg-purple-50 p-5 rounded-xl border border-purple-100">
+                        <h3 class="font-bold text-purple-800 mb-4 text-sm flex items-center justify-between">
+                            <span><i class="fa-solid fa-cloud-arrow-down mr-2"></i>第五步：全系統雲端備份與還原</span>
+                        </h3>
+                        <p class="text-xs text-purple-700 mb-4 leading-relaxed">
+                            您的資料僅儲存在這台裝置的瀏覽器中。強烈建議您定期點擊「備份資料」，並將下載的檔案存入 <b>Google 雲端硬碟</b>。未來只要在此處重新上傳該備份檔，所有的設定與歷史明細都能完美還原！
+                        </p>
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                            <button @click="exportSystemBackup()" class="px-5 py-2.5 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition shadow-sm flex items-center gap-2">
+                                <i class="fa-solid fa-download"></i> 下載備份檔 (.json)
+                            </button>
+                            
+                            <div class="relative w-full sm:w-auto mt-2 sm:mt-0">
+                                <input type="file" accept=".json" id="importBackupFile" class="hidden" @change="importSystemBackup($event)">
+                                <label for="importBackupFile" class="cursor-pointer px-5 py-2.5 bg-white text-purple-600 font-bold rounded-lg border border-purple-300 hover:bg-purple-100 transition shadow-sm flex items-center gap-2 justify-center">
+                                    <i class="fa-solid fa-upload"></i> 從備份檔還原
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-center pt-4">
+                        <button @click="activeTab = 'dashboard'; window.scrollTo(0,0); window.location.reload();" class="px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition shadow-md">
+                            儲存並重新運算 (返回主控台)
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
+
     </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const sw = `
+                    self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
+                    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+                    self.addEventListener('fetch', e => {});
+                `;
+                const blob = new Blob([sw], { type: 'application/javascript' });
+                navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => {
+                    console.log("備註：如果您是直接打開本機檔案，無法安裝為 APP 是正常現象。請上傳至 GitHub Pages 後即可正常安裝。");
+                });
+            });
+        }
+    </script>
 </body>
 </html>
-
-
