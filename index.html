@@ -117,10 +117,12 @@
                 
                 showChart: false,
                 chartRendered: false,
-                // 注意：已經將 chartInstance 從這裡移除，避免 Alpine Proxy 破壞圖表引擎
                 chartData: [],
                 ma240Data: [],
                 ma2400Data: [],
+                
+                // 新增快取變數
+                cachedHistoricalData: null,
 
                 init() {
                     this.loadData();
@@ -129,6 +131,10 @@
                         this.saveData();
                     }
                     
+                    // 1. 優先載入本地歷史快取，瞬間繪製畫面
+                    this.loadHistoricalCache();
+                    
+                    // 2. 背景更新最新資料
                     this.fetchDataAndProcess().then(() => {
                         this.checkReminder();
                     });
@@ -155,17 +161,37 @@
                     this.$watch('targetMonthlyExpense', () => this.saveData());
                 },
 
+                // --- 歷史資料快取邏輯 ---
+                loadHistoricalCache() {
+                    try {
+                        const cached = localStorage.getItem('THH0050_History_V2');
+                        if (cached) {
+                            const parsed = JSON.parse(cached);
+                            if (parsed && parsed.length > 0) {
+                                this.cachedHistoricalData = parsed;
+                                this.historicalDataLoaded = true;
+                                this.calculateIndicators(this.cachedHistoricalData);
+                                this.processAutoDeduct(this.cachedHistoricalData);
+                                this.autoCheckIndicators();
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("快取讀取失敗，將重新抓取", e);
+                    }
+                },
+
                 // --- 圖表控制區 ---
                 toggleChart() {
-                    if (!this.historicalDataLoaded) return; // 確保資料載入後才能展開
+                    if (!this.historicalDataLoaded) return;
                     
                     this.showChart = !this.showChart;
                     if (this.showChart) {
-                        // 【關鍵修正】手機端有時 DOM 動畫還沒跑完，寬度會是 0。
-                        // 改用 setTimeout 等待展開動畫 (300ms) 確實結束後再繪製圖表。
-                        setTimeout(() => {
-                            this.renderChart();
-                        }, 350);
+                        // 移除 x-transition 後，只需稍微等待 DOM 顯示後再繪製
+                        this.$nextTick(() => {
+                            setTimeout(() => {
+                                this.renderChart();
+                            }, 50); // 給予 50ms 確保容器 display block 生效且寬度大於 0
+                        });
                     }
                 },
 
@@ -173,17 +199,19 @@
                     const container = document.getElementById('lwc-chart');
                     if (!container) return;
                     
-                    // 清除舊圖表實例，將實例綁定在 window 上避免 Alpine Proxy 攔截報錯
                     if (window.lwcChartInstance) {
                         window.lwcChartInstance.remove();
                         window.lwcChartInstance = null;
                     }
                     container.innerHTML = ''; 
 
-                    // 確保容器有正確寬度，如果為 0，則給予手機螢幕的預估寬度做為備援
+                    // 強化寬度偵測，避免手機版抓到 0
                     let chartWidth = container.clientWidth;
                     if (!chartWidth || chartWidth === 0) {
-                        chartWidth = window.innerWidth - 32; // 扣除 padding
+                        chartWidth = container.parentElement.clientWidth;
+                        if (!chartWidth || chartWidth === 0) {
+                            chartWidth = window.innerWidth - 32;
+                        }
                     }
 
                     const chart = LightweightCharts.createChart(container, {
@@ -222,7 +250,6 @@
                         scaleMargins: { top: 0.8, bottom: 0 }, 
                     });
                     
-                    // 解開 Alpine 的 Proxy 包裝，否則 Lightweight Charts 讀取資料會報錯
                     const rawChartData = JSON.parse(JSON.stringify(this.chartData));
                     
                     if (rawChartData && rawChartData.length > 0) {
@@ -238,7 +265,6 @@
                             }));
                             volumeSeries.setData(volumeData);
                             
-                            // 自動適應畫面範圍
                             chart.timeScale().fitContent();
                         } catch (err) {
                             console.error("圖表資料繪製失敗:", err);
@@ -247,16 +273,16 @@
 
                     this.chartRendered = true;
 
-                    // 綁定 ResizeObserver 來處理 RWD 視窗縮放，比單純 window resize 更穩
-                    const resizeObserver = new ResizeObserver(entries => {
-                        if (entries.length === 0 || entries[0].target !== container) return;
-                        const newRect = entries[0].contentRect;
-                        // 確保寬度大於 0 才更新，避免圖表引擎崩潰
-                        if (window.lwcChartInstance && newRect.width > 0) {
-                            window.lwcChartInstance.applyOptions({ width: newRect.width });
-                        }
-                    });
-                    resizeObserver.observe(container);
+                    if (window.ResizeObserver) {
+                        const resizeObserver = new ResizeObserver(entries => {
+                            if (entries.length === 0 || entries[0].target !== container) return;
+                            const newRect = entries[0].contentRect;
+                            if (window.lwcChartInstance && newRect.width > 0) {
+                                window.lwcChartInstance.applyOptions({ width: newRect.width });
+                            }
+                        });
+                        resizeObserver.observe(container);
+                    }
                 },
                 // -----------------
 
@@ -474,7 +500,7 @@
                     }
                     this.autoCheckIndicators();
                     if(this.chartRendered && this.showChart) {
-                        this.renderChart(); // 重新繪製以更新最新價格
+                        this.renderChart(); 
                     }
                     setTimeout(() => {
                         this.isFetchingPrice = false;
@@ -514,20 +540,32 @@
                 async fetchDataAndProcess() {
                     if (this.isFetching) return;
                     this.isFetching = true;
-                    let historicalData = [];
+                    let fetchedData = [];
 
                     await this.fetchRealTimePrice();
 
-                    try {
+                    // 判斷要抓取多久的資料
+                    let startDateStr = '';
+                    let yfRange = 'max';
+                    if (this.cachedHistoricalData && this.cachedHistoricalData.length > 0) {
+                        // 有快取：只抓最近 1 個月的資料來補齊，大幅節省時間
+                        const d = new Date();
+                        d.setMonth(d.getMonth() - 1);
+                        startDateStr = d.toISOString().split('T')[0];
+                        yfRange = '1mo';
+                    } else {
+                        // 無快取：抓取 12 年歷史資料
                         const d = new Date();
                         d.setFullYear(d.getFullYear() - 12); 
-                        const startDate = d.toISOString().split('T')[0];
-                        // API 取得資料：加入 open 開盤價
-                        const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDate}`;
+                        startDateStr = d.toISOString().split('T')[0];
+                    }
+
+                    try {
+                        const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDateStr}`;
                         const response = await fetch(finmindUrl);
                         const json = await response.json();
                         if (json.msg === 'success' && json.data && json.data.length > 0) {
-                            historicalData = json.data.map(item => ({
+                            fetchedData = json.data.map(item => ({
                                 time: new Date(item.date).getTime(), 
                                 open: item.open, 
                                 close: item.close, 
@@ -536,11 +574,11 @@
                                 volume: item.Trading_Volume
                             }));
                         }
-                    } catch (e) { console.warn("FinMind API 失敗，切換備援方案...", e); }
+                    } catch (e) { console.warn("FinMind API 失敗，切換備援方案..."); }
 
-                    if (historicalData.length === 0) {
+                    if (fetchedData.length === 0) {
                         try {
-                            const yfUrl = 'https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=max&interval=1d';
+                            const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?range=${yfRange}&interval=1d`;
                             const proxies = ['https://api.allorigins.win/raw?url=' + encodeURIComponent(yfUrl), 'https://corsproxy.io/?' + encodeURIComponent(yfUrl)];
                             for (let proxy of proxies) {
                                 try {
@@ -553,7 +591,7 @@
                                             const quotes = result.indicators.quote[0];
                                             for(let i = 0; i < timestamps.length; i++) {
                                                 if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
-                                                    historicalData.push({ 
+                                                    fetchedData.push({ 
                                                         time: timestamps[i] * 1000, 
                                                         open: quotes.open[i] || quotes.close[i],
                                                         close: quotes.close[i], 
@@ -571,6 +609,56 @@
                         } catch (error) {}
                     }
 
+                    // 處理剛抓回來的新資料 (處理除權息分割)
+                    if (fetchedData.length > 0) {
+                        const splitTime = new Date('2025-06-18T00:00:00+08:00').getTime();
+                        fetchedData = fetchedData.map(item => {
+                            if (item.time < splitTime) {
+                                return {
+                                    time: item.time, open: item.open / 4, close: item.close / 4,
+                                    high: item.high / 4, low: item.low / 4, volume: item.volume
+                                };
+                            }
+                            return item;
+                        });
+                    }
+
+                    // 合併快取與新資料，確保無重複天數且排序正確
+                    let uniqueMap = new Map();
+                    // 先放入舊快取
+                    if (this.cachedHistoricalData) {
+                        for (let item of this.cachedHistoricalData) {
+                            let d = new Date(item.time);
+                            uniqueMap.set(`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`, item);
+                        }
+                    }
+                    // 放入新抓取的資料 (若有同日期的會覆蓋舊的，確保最新收盤價正確)
+                    for (let item of fetchedData) {
+                        let d = new Date(item.time);
+                        uniqueMap.set(`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`, item);
+                    }
+
+                    let finalData = Array.from(uniqueMap.values());
+                    finalData.sort((a, b) => a.time - b.time);
+
+                    if (finalData.length > 0) {
+                        this.cachedHistoricalData = finalData;
+                        
+                        // 儲存回快取，下次秒開
+                        try {
+                            localStorage.setItem('THH0050_History_V2', JSON.stringify(finalData));
+                        } catch(e) { console.warn("快取儲存空間不足", e); }
+
+                        this.historicalDataLoaded = true;
+                        this.calculateIndicators(finalData);
+                        this.processAutoDeduct(finalData);
+                    } else {
+                        if (!this.realTimeFetched || this.currentPrice <= 0) {
+                            await this.fetchTWSEPrice();
+                        }
+                    }
+
+                    // 抓取其他基本面資料
                     try {
                         const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                         if(pbRes.ok) {
@@ -600,33 +688,6 @@
                             this.etfDiscount = (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) ? yuantaData[0].pdRate + '%' : '無資料';
                         } else this.etfDiscount = 'API阻擋';
                     } catch(e) { this.etfDiscount = 'API阻擋'; }
-
-                    if (historicalData.length > 0) {
-                        historicalData.sort((a, b) => a.time - b.time);
-
-                        const splitTime = new Date('2025-06-18T00:00:00+08:00').getTime();
-                        historicalData = historicalData.map(item => {
-                            if (item.time < splitTime) {
-                                return {
-                                    time: item.time,
-                                    open: item.open / 4,
-                                    close: item.close / 4,
-                                    high: item.high / 4,
-                                    low: item.low / 4,
-                                    volume: item.volume
-                                };
-                            }
-                            return item;
-                        });
-
-                        this.historicalDataLoaded = true;
-                        this.calculateIndicators(historicalData);
-                        this.processAutoDeduct(historicalData);
-                    } else {
-                        if (!this.realTimeFetched || this.currentPrice <= 0) {
-                            await this.fetchTWSEPrice();
-                        }
-                    }
 
                     this.autoCheckIndicators();
                     this.isFetching = false;
@@ -1280,13 +1341,14 @@
             <!-- 折疊式輕量級自繪圖表區塊 -->
             <button @click="toggleChart()" :disabled="!historicalDataLoaded" class="w-full mt-2 mb-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex justify-center items-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed">
                 <i class="fa-solid fa-chart-simple text-blue-500 group-hover:scale-110 transition-transform"></i>
-                <span x-show="!historicalDataLoaded">圖表資料載入中...</span>
+                <span x-show="!historicalDataLoaded">圖表快取處理中...</span>
                 <span x-show="historicalDataLoaded" x-text="showChart ? '收合 0050 長期技術與均線圖' : '📊 展開 0050 長期技術與均線圖'"></span>
             </button>
 
-            <div x-show="showChart" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-[-10px]" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="bg-white p-1 sm:p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 w-full relative" x-cloak>
+            <!-- 關鍵修正：移除了 x-transition，避免它在動畫期間干擾 Canvas 導致寬度 0 -->
+            <div x-show="showChart" class="bg-white p-1 sm:p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 w-full relative" x-cloak>
                 <div class="text-xs font-bold text-slate-500 mb-2 pl-2"><i class="fa-solid fa-lightbulb text-yellow-500"></i> 滑鼠滾輪可縮放，拖曳可平移。您可清楚看見價格與各均線的相對位階。</div>
-                <div id="lwc-chart" style="width: 100%; height: 400px;" class="rounded-lg overflow-hidden border border-slate-100 relative"></div>
+                <div id="lwc-chart" style="width: 100%; height: 400px; display: block;" class="rounded-lg overflow-hidden border border-slate-100 relative"></div>
                 <div class="mt-4 pb-2 flex flex-wrap gap-4 justify-center text-xs font-medium text-slate-600">
                     <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#f59e0b] rounded"></div> 年線 (MA240)</span>
                     <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#a855f7] rounded"></div> 十年線 (MA2400)</span>
