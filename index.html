@@ -26,7 +26,7 @@
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- 引入 TradingView Lightweight Charts 輕量級開源圖表庫 -->
+    <!-- 引入 TradingView Lightweight Charts -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 
     <style>
@@ -128,10 +128,8 @@
                         this.saveData();
                     }
                     
-                    // 1. 優先載入本地歷史快取
                     this.loadHistoricalCache();
                     
-                    // 2. 背景更新最新資料 (已改為只抓最近 5 天)
                     this.fetchDataAndProcess().then(() => {
                         this.checkReminder();
                     });
@@ -176,29 +174,36 @@
                     }
                 },
 
-                // --- 【核心修正】圖表控制區 ---
                 toggleChart() {
                     if (!this.historicalDataLoaded) return;
                     
                     this.showChart = !this.showChart;
                     if (this.showChart) {
-                        // 給予 150 毫秒的延遲，確保瀏覽器完全把 div 從 display:none 變成 display:block
-                        setTimeout(() => {
-                            this.renderChart();
-                        }, 150);
+                        // 使用輪詢機制確保寬度大於 0 才能繪圖，徹底解決手機版當機問題
+                        let attempts = 0;
+                        let checkContainer = setInterval(() => {
+                            const container = document.getElementById('lwc-chart');
+                            if (container && container.clientWidth > 0) {
+                                clearInterval(checkContainer);
+                                this.renderChart();
+                            }
+                            if (++attempts > 20) { // 最多等 1 秒
+                                clearInterval(checkContainer);
+                                this.renderChart(); // 硬上
+                            }
+                        }, 50);
                     } else {
-                        // 收合時清空記憶體
                         if (window.lwcChartInstance) {
                             window.lwcChartInstance.remove();
                             window.lwcChartInstance = null;
+                            this.chartRendered = false;
                         }
                     }
                 },
 
                 renderChart() {
-                    // 檢查圖表套件是否載入成功
                     if (typeof LightweightCharts === 'undefined') {
-                        alert("圖表套件載入失敗，這可能是網路問題。請重新整理網頁再試一次。");
+                        alert("圖表套件載入失敗，請確認網路連線。");
                         return;
                     }
 
@@ -211,13 +216,11 @@
                     }
                     container.innerHTML = ''; 
 
-                    // 【終極寬度防呆】取得實體寬度，若為 0 則往父層找，再為 0 則強制代入螢幕寬度
-                    let chartWidth = container.getBoundingClientRect().width;
+                    let chartWidth = container.clientWidth;
                     if (!chartWidth || chartWidth === 0) {
-                        chartWidth = container.parentElement.getBoundingClientRect().width;
+                        chartWidth = container.parentElement.clientWidth;
                     }
                     if (!chartWidth || chartWidth === 0) {
-                        // 手機版通常左右有 padding，扣除大約 40px
                         chartWidth = window.innerWidth ? window.innerWidth - 40 : 320; 
                     }
 
@@ -242,24 +245,14 @@
                             wickDownColor: '#22c55e'
                         });
 
-                        const ma240Series = chart.addLineSeries({ 
-                            color: '#f59e0b', lineWidth: 2, title: '年線', crosshairMarkerVisible: false 
-                        });
+                        const ma240Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 2, title: '年線', crosshairMarkerVisible: false });
+                        const ma2400Series = chart.addLineSeries({ color: '#a855f7', lineWidth: 2, title: '十年線', crosshairMarkerVisible: false });
 
-                        const ma2400Series = chart.addLineSeries({ 
-                            color: '#a855f7', lineWidth: 2, title: '十年線', crosshairMarkerVisible: false 
-                        });
-
-                        const volumeSeries = chart.addHistogramSeries({
-                            priceFormat: { type: 'volume' },
-                            priceScaleId: '', 
-                        });
-                        volumeSeries.priceScale().applyOptions({
-                            scaleMargins: { top: 0.8, bottom: 0 }, 
-                        });
+                        const volumeSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: '' });
+                        volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
                         
-                        const rawChartData = JSON.parse(JSON.stringify(this.chartData));
-                        
+                        // 防呆：再次確保資料是深拷貝且時間遞增無重複
+                        let rawChartData = JSON.parse(JSON.stringify(this.chartData));
                         if (rawChartData && rawChartData.length > 0) {
                             candleSeries.setData(rawChartData);
                             ma240Series.setData(JSON.parse(JSON.stringify(this.ma240Data)));
@@ -277,7 +270,6 @@
                         
                         this.chartRendered = true;
 
-                        // RWD 視窗縮放監聽
                         if (window.ResizeObserver) {
                             const resizeObserver = new ResizeObserver(entries => {
                                 if (entries.length === 0 || entries[0].target !== container) return;
@@ -290,16 +282,12 @@
                         }
                     } catch (err) {
                         console.error("圖表實例建立失敗:", err);
+                        alert("圖表繪製發生錯誤，請稍後重試。");
                     }
                 },
-                // -----------------
 
                 addPlan() {
-                    this.investmentPlans.push({
-                        id: Date.now(),
-                        day: 15,
-                        amount: 10000
-                    });
+                    this.investmentPlans.push({ id: Date.now(), day: 15, amount: 10000 });
                 },
 
                 removePlan(id) {
@@ -318,7 +306,7 @@
                             date: this.manualDate,
                             shares: 0,
                             price: 0,
-                            amount: this.manualAmount,
+                            amount: Math.floor(this.manualAmount), // 無條件捨去
                             type: 'manual',
                             action: 'dividend'
                         });
@@ -330,8 +318,8 @@
                         }
                         
                         let currentState = this.inventoryState; 
-                        let targetShares = parseFloat(this.manualShares);
-                        let targetTotalCost = targetShares * parseFloat(this.manualPrice);
+                        let targetShares = Math.floor(this.manualShares); // 無條件捨去
+                        let targetTotalCost = Math.floor(targetShares * parseFloat(this.manualPrice)); // 無條件捨去
                         
                         let diffShares = targetShares - currentState.shares;
                         let diffAmount = targetTotalCost - currentState.totalCost;
@@ -341,12 +329,12 @@
                             date: this.manualDate,
                             shares: diffShares,
                             price: 0, 
-                            amount: diffAmount,
+                            amount: diffAmount, // 差額
                             type: 'manual',
                             action: 'sync'
                         });
                         
-                        this.msgBoxText = `✅ 庫存校正已完成！\n系統已自動補足差額股數：${diffShares.toFixed(2)} 股\n自動微調成本差額：${diffAmount.toFixed(0)} 元`;
+                        this.msgBoxText = `✅ 庫存校正已完成！\n系統已自動補足差額股數：${diffShares} 股\n自動微調成本差額：${diffAmount} 元`;
                         this.showMsgBox = true;
                     } else {
                         if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0 || !this.manualDate) {
@@ -354,12 +342,16 @@
                             this.showMsgBox = true;
                             return;
                         }
+                        
+                        let finalShares = Math.floor(this.manualShares); // 無條件捨去
+                        let finalAmount = Math.floor(finalShares * this.manualPrice); // 無條件捨去
+
                         this.transactions.push({
                             id: Date.now() + Math.random(),
                             date: this.manualDate,
-                            shares: this.manualShares,
+                            shares: finalShares,
                             price: this.manualPrice,
-                            amount: this.manualShares * this.manualPrice,
+                            amount: finalAmount,
                             type: 'manual',
                             action: this.manualAction
                         });
@@ -552,15 +544,27 @@
 
                     await this.fetchRealTimePrice();
 
-                    // 【核心修正】判斷抓取區間：如果有快取，只抓最近 5 天
+                    // 【核心修正】動態判斷抓取區間，確保無縫接軌不漏資料
                     let startDateStr = '';
                     let yfRange = 'max';
+                    
                     if (this.cachedHistoricalData && this.cachedHistoricalData.length > 0) {
-                        // 有快取：只抓最近 5 天的資料來補齊，大幅節省時間
-                        const d = new Date();
-                        d.setDate(d.getDate() - 5);
-                        startDateStr = d.toISOString().split('T')[0];
-                        yfRange = '5d';
+                        // 取得快取中最後一筆資料的日期
+                        let lastRecord = this.cachedHistoricalData[this.cachedHistoricalData.length - 1];
+                        let lastDate = new Date(lastRecord.time);
+                        
+                        // 為了確保不漏接，從最後一天的前兩天開始抓
+                        lastDate.setDate(lastDate.getDate() - 2); 
+                        startDateStr = lastDate.toISOString().split('T')[0];
+
+                        // 計算距離今天過了幾天，動態決定 Yahoo 抓取範圍
+                        let daysDiff = (new Date().getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+                        if (daysDiff <= 5) yfRange = '5d';
+                        else if (daysDiff <= 30) yfRange = '1mo';
+                        else if (daysDiff <= 90) yfRange = '3mo';
+                        else if (daysDiff <= 180) yfRange = '6mo';
+                        else if (daysDiff <= 365) yfRange = '1y';
+                        else yfRange = 'max';
                     } else {
                         // 無快取：抓取 12 年歷史資料
                         const d = new Date();
@@ -617,7 +621,6 @@
                         } catch (error) {}
                     }
 
-                    // 處理剛抓回來的新資料 (處理除權息分割)
                     if (fetchedData.length > 0) {
                         const splitTime = new Date('2025-06-18T00:00:00+08:00').getTime();
                         fetchedData = fetchedData.map(item => {
@@ -631,28 +634,33 @@
                         });
                     }
 
-                    // 合併快取與新資料，確保無重複天數且排序正確
+                    // 合併快取與新資料，確保無重複天數
                     let uniqueMap = new Map();
-                    // 先放入舊快取
+                    
                     if (this.cachedHistoricalData) {
                         for (let item of this.cachedHistoricalData) {
                             let d = new Date(item.time);
-                            uniqueMap.set(`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`, item);
+                            let yyyy = d.getFullYear();
+                            let mm = String(d.getMonth() + 1).padStart(2, '0');
+                            let dd = String(d.getDate()).padStart(2, '0');
+                            uniqueMap.set(`${yyyy}-${mm}-${dd}`, item);
                         }
                     }
-                    // 放入新抓取的資料 (若有同日期的會覆蓋舊的，確保最新收盤價正確)
+                    
                     for (let item of fetchedData) {
                         let d = new Date(item.time);
-                        uniqueMap.set(`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`, item);
+                        let yyyy = d.getFullYear();
+                        let mm = String(d.getMonth() + 1).padStart(2, '0');
+                        let dd = String(d.getDate()).padStart(2, '0');
+                        uniqueMap.set(`${yyyy}-${mm}-${dd}`, item);
                     }
 
                     let finalData = Array.from(uniqueMap.values());
+                    // 確保原始時間戳記排序
                     finalData.sort((a, b) => a.time - b.time);
 
                     if (finalData.length > 0) {
                         this.cachedHistoricalData = finalData;
-                        
-                        // 儲存回快取，下次秒開
                         try {
                             localStorage.setItem('THH0050_History_V2', JSON.stringify(finalData));
                         } catch(e) { console.warn("快取儲存空間不足", e); }
@@ -666,7 +674,6 @@
                         }
                     }
 
-                    // 抓取其他基本面資料
                     try {
                         const pbRes = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                         if(pbRes.ok) {
@@ -701,22 +708,6 @@
                     this.isFetching = false;
                 },
 
-                async fetchTWSEPrice() {
-                    try {
-                        const twseResponse = await fetch(`https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL?_t=${Date.now()}`);
-                        if (twseResponse.ok) {
-                            const twseData = await twseResponse.json();
-                            const stock0050 = twseData.find(stock => stock.Code === '0050');
-                            if (stock0050 && stock0050.ClosingPrice) {
-                                this.currentPrice = parseFloat(stock0050.ClosingPrice.replace(/,/g, ''));
-                                if (stock0050.TradeVolume) {
-                                    this.currentVolume = parseFloat(stock0050.TradeVolume.replace(/,/g, ''));
-                                }
-                            }
-                        }
-                    } catch (error) {}
-                },
-
                 calculateIndicators(data) {
                     const len = data.length;
                     
@@ -725,11 +716,15 @@
                         if (!this.currentVolume) this.currentVolume = data[len - 1].volume || 0;
                     }
 
+                    // 【核心修正】將時間轉換為圖表要求的格式，並強制字串排序確保 100% 不當機
                     let uniqueChartData = [];
                     let seen = new Set();
                     for (let d of data) {
                         let t = new Date(d.time);
-                        let timeStr = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+                        let yyyy = t.getFullYear();
+                        let mm = String(t.getMonth() + 1).padStart(2, '0');
+                        let dd = String(t.getDate()).padStart(2, '0');
+                        let timeStr = `${yyyy}-${mm}-${dd}`;
                         
                         let closeVal = Number(d.close);
                         if (!seen.has(timeStr) && !isNaN(closeVal) && closeVal > 0) {
@@ -744,6 +739,9 @@
                             });
                         }
                     }
+                    
+                    // 【強制按日期字串排序】這是 Lightweight Charts 沒報錯但死當的最常見原因
+                    uniqueChartData.sort((a, b) => a.time.localeCompare(b.time));
                     this.chartData = uniqueChartData;
 
                     if (this.chartData.length >= 2) {
@@ -862,9 +860,6 @@
                     let planStart = this.startDate ? new Date(this.startDate) : new Date(0);
                     planStart.setHours(0,0,0,0);
 
-                    let addedSharesTotal = 0;
-                    let addedCostTotal = 0;
-
                     while (currentDate <= today) {
                         if (currentDate >= planStart) {
                             const todayDay = currentDate.getDate();
@@ -883,8 +878,9 @@
                                     }
                                 }
 
+                                // 【核心修正】股數與總金額無條件捨去
                                 const sharesBought = Math.floor(plan.amount / executedPrice);
-                                const actualCost = sharesBought * executedPrice;
+                                const actualCost = Math.floor(sharesBought * executedPrice);
 
                                 this.transactions.push({
                                     id: Date.now() + Math.random(),
@@ -896,15 +892,12 @@
                                     action: 'buy'
                                 });
 
-                                addedSharesTotal += sharesBought;
-                                addedCostTotal += actualCost;
-
                                 let dateStr = currentDate.toLocaleDateString();
                                 if (executedTime.getTime() !== currentDate.getTime()) {
                                     dateStr = `${dateStr} (順延至 ${executedTime.toLocaleDateString()})`;
                                 }
 
-                                logs.push(`📅 ${dateStr}：歷史收盤價 ${executedPrice.toFixed(2)} 元，買入 ${sharesBought} 股 (實扣 ${actualCost.toFixed(0)} 元) [依設定: ${plan.day}號扣${plan.amount}元]`);
+                                logs.push(`📅 ${dateStr}：收盤價 ${executedPrice.toFixed(2)}，買入 ${sharesBought} 股 (實扣 ${actualCost} 元)`);
                             }
                         }
                         currentDate.setDate(currentDate.getDate() + 1);
@@ -1145,7 +1138,9 @@
                             
                             this.transactions = (parsed.transactions || []).map(t => ({
                                 ...t,
-                                action: t.action || 'buy'
+                                action: t.action || 'buy',
+                                amount: Math.floor(t.amount || 0), // 載入時也確保為整數
+                                shares: Math.floor(t.shares || 0)  // 載入時也確保為整數
                             }));
                             
                             this.startDate = parsed.startDate || '';
@@ -1190,7 +1185,6 @@
 
     <div x-data="investmentApp" x-cloak class="max-w-4xl mx-auto px-4 sm:px-6">
         
-        <!-- 毛玻璃訊息視窗 -->
         <div x-show="showMsgBox" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center border border-slate-200">
                 <div class="text-lg font-bold text-slate-800 mb-6 whitespace-pre-line" x-text="msgBoxText"></div>
@@ -1198,7 +1192,6 @@
             </div>
         </div>
 
-        <!-- 毛玻璃更新日誌視窗 -->
         <div x-show="showLogs" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
                 <div class="flex items-center gap-3 text-green-600 mb-4">
@@ -1215,7 +1208,6 @@
             </div>
         </div>
 
-        <!-- 吸頂導覽列 -->
         <header class="sticky top-0 z-40 bg-background/90 backdrop-blur-md pt-6 pb-2 mb-6 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-slate-200/50">
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-4">
                 <div>
@@ -1331,17 +1323,18 @@
                 </div>
             </div>
 
-            <!-- 折疊式輕量級自繪圖表區塊 -->
+            <!-- 圖表按鈕 -->
             <button @click="toggleChart()" :disabled="!historicalDataLoaded" class="w-full mt-2 mb-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex justify-center items-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed">
                 <i class="fa-solid fa-chart-simple text-blue-500 group-hover:scale-110 transition-transform"></i>
                 <span x-show="!historicalDataLoaded">圖表快取處理中...</span>
                 <span x-show="historicalDataLoaded" x-text="showChart ? '收合 0050 長期技術與均線圖' : '📊 展開 0050 長期技術與均線圖'"></span>
             </button>
 
-            <!-- 關鍵修正：移除了 x-transition 避免動畫期間干擾寬度判斷，並確保 display:block 立刻生效 -->
+            <!-- 圖表區塊 -->
             <div x-show="showChart" class="bg-white p-1 sm:p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 w-full relative" x-cloak>
                 <div class="text-xs font-bold text-slate-500 mb-2 pl-2"><i class="fa-solid fa-lightbulb text-yellow-500"></i> 滑鼠滾輪可縮放，拖曳可平移。您可清楚看見價格與各均線的相對位階。</div>
-                <div id="lwc-chart" style="width: 100%; height: 400px; display: block;" class="rounded-lg overflow-hidden border border-slate-100 relative"></div>
+                <!-- 加上 min-height 確保容器不會因為高度 0 坍塌 -->
+                <div id="lwc-chart" style="width: 100%; min-height: 400px; display: block;" class="rounded-lg overflow-hidden border border-slate-100 relative"></div>
                 <div class="mt-4 pb-2 flex flex-wrap gap-4 justify-center text-xs font-medium text-slate-600">
                     <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#f59e0b] rounded"></div> 年線 (MA240)</span>
                     <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#a855f7] rounded"></div> 十年線 (MA2400)</span>
@@ -1637,7 +1630,7 @@
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-water text-cyan-500"></i>市場恐慌度 (大盤融資餘額)</h4>
                                 <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 觀察散戶的「融資餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
-                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮 ক্যামের籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
 
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
@@ -1704,7 +1697,7 @@
                                         <div>
                                             <label class="block text-sm font-bold text-slate-700 mb-2">您期望的退休「每月」預算：</label>
                                             <div class="flex items-center gap-2 mb-3">
-                                                <input type="number" x-model.number="targetMonthlyExpense" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition font-bold text-indigo-700">
+                                                <input type="number" step="1" x-model.number="targetMonthlyExpense" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition font-bold text-indigo-700">
                                                 <span class="text-sm text-slate-600">元</span>
                                             </div>
                                             <div class="text-xs text-slate-500 bg-slate-50 p-2 rounded">
@@ -1783,7 +1776,7 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-600 mb-1">期初庫存量 (股)</label>
-                                <input type="number" x-model.number="baseShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                <input type="number" step="1" x-model.number="baseShares" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-slate-600 mb-1">期初買入均價 (元)</label>
@@ -1812,9 +1805,9 @@
                                         <div class="flex items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
                                             <div class="flex-1 flex items-center gap-2 flex-wrap sm:flex-nowrap">
                                                 <span class="text-sm text-slate-600 whitespace-nowrap">每月</span>
-                                                <input type="number" min="1" max="31" x-model.number="plan.day" class="w-16 px-2 py-1 text-center border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                                <input type="number" min="1" max="31" step="1" x-model.number="plan.day" class="w-16 px-2 py-1 text-center border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                                                 <span class="text-sm text-slate-600 whitespace-nowrap">號，扣款</span>
-                                                <input type="number" min="0" x-model.number="plan.amount" class="w-24 px-2 py-1 text-right border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
+                                                <input type="number" min="0" step="1" x-model.number="plan.amount" class="w-24 px-2 py-1 text-right border border-slate-300 rounded focus:ring-2 focus:ring-secondary focus:border-secondary transition">
                                                 <span class="text-sm text-slate-600 whitespace-nowrap">元</span>
                                             </div>
                                             <button @click="removePlan(plan.id)" class="text-slate-400 hover:text-red-500 p-2 transition" title="刪除此設定"><i class="fa-solid fa-trash-can"></i></button>
@@ -1849,7 +1842,7 @@
                             </div>
                             <div class="col-span-1" x-show="manualAction !== 'dividend'">
                                 <label class="block text-sm font-medium text-slate-600 mb-1" x-text="manualAction === 'sync' ? '實際總股數' : '股數'"></label>
-                                <input type="number" x-model.number="manualShares" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100">
+                                <input type="number" step="1" x-model.number="manualShares" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 100">
                             </div>
                             <div class="col-span-1" x-show="manualAction !== 'dividend'">
                                 <label class="block text-sm font-medium text-slate-600 mb-1" x-text="manualAction === 'sync' ? '實際平均成本' : '單價'"></label>
@@ -1857,7 +1850,7 @@
                             </div>
                             <div class="col-span-2" x-show="manualAction === 'dividend'" x-cloak>
                                 <label class="block text-sm font-medium text-slate-600 mb-1">配息總金額 (元)</label>
-                                <input type="number" x-model.number="manualAmount" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 5000">
+                                <input type="number" step="1" x-model.number="manualAmount" class="w-full px-3 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition" placeholder="例如: 5000">
                             </div>
                         </div>
                         <div class="mt-4 text-right">
@@ -1893,10 +1886,10 @@
 
                                     <!-- Amount & Shares -->
                                     <div class="flex-1 flex items-center gap-2 mt-2 sm:mt-0">
-                                        <input type="number" x-model.number="txn.amount" placeholder="總金額" class="w-full sm:w-28 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
+                                        <input type="number" step="1" x-model.number="txn.amount" placeholder="總金額" class="w-full sm:w-28 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">元,</span>
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action === 'dividend'" x-cloak>元</span>
-                                        <input type="number" x-model.number="txn.shares" placeholder="股數" class="w-full sm:w-24 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition" x-show="txn.action !== 'dividend'">
+                                        <input type="number" step="1" x-model.number="txn.shares" placeholder="股數" class="w-full sm:w-24 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition" x-show="txn.action !== 'dividend'">
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">股</span>
                                     </div>
 
