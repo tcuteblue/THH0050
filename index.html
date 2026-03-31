@@ -38,13 +38,11 @@
         .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        /* 歷史明細列表捲動條 */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        /* 抽離指標卡片樣式以瘦身 HTML */
         .indicator-card {
             display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #cbd5e1;
             background-color: #1e293b; padding: 0.625rem 0.75rem; border-radius: 0.75rem;
@@ -121,7 +119,6 @@
                 ma240Data: [],
                 ma2400Data: [],
                 
-                // 新增快取變數
                 cachedHistoricalData: null,
 
                 init() {
@@ -131,10 +128,10 @@
                         this.saveData();
                     }
                     
-                    // 1. 優先載入本地歷史快取，瞬間繪製畫面
+                    // 1. 優先載入本地歷史快取
                     this.loadHistoricalCache();
                     
-                    // 2. 背景更新最新資料
+                    // 2. 背景更新最新資料 (已改為只抓最近 5 天)
                     this.fetchDataAndProcess().then(() => {
                         this.checkReminder();
                     });
@@ -161,7 +158,6 @@
                     this.$watch('targetMonthlyExpense', () => this.saveData());
                 },
 
-                // --- 歷史資料快取邏輯 ---
                 loadHistoricalCache() {
                     try {
                         const cached = localStorage.getItem('THH0050_History_V2');
@@ -176,26 +172,36 @@
                             }
                         }
                     } catch (e) {
-                        console.warn("快取讀取失敗，將重新抓取", e);
+                        console.warn("快取讀取失敗", e);
                     }
                 },
 
-                // --- 圖表控制區 ---
+                // --- 【核心修正】圖表控制區 ---
                 toggleChart() {
                     if (!this.historicalDataLoaded) return;
                     
                     this.showChart = !this.showChart;
                     if (this.showChart) {
-                        // 移除 x-transition 後，只需稍微等待 DOM 顯示後再繪製
-                        this.$nextTick(() => {
-                            setTimeout(() => {
-                                this.renderChart();
-                            }, 50); // 給予 50ms 確保容器 display block 生效且寬度大於 0
-                        });
+                        // 給予 150 毫秒的延遲，確保瀏覽器完全把 div 從 display:none 變成 display:block
+                        setTimeout(() => {
+                            this.renderChart();
+                        }, 150);
+                    } else {
+                        // 收合時清空記憶體
+                        if (window.lwcChartInstance) {
+                            window.lwcChartInstance.remove();
+                            window.lwcChartInstance = null;
+                        }
                     }
                 },
 
                 renderChart() {
+                    // 檢查圖表套件是否載入成功
+                    if (typeof LightweightCharts === 'undefined') {
+                        alert("圖表套件載入失敗，這可能是網路問題。請重新整理網頁再試一次。");
+                        return;
+                    }
+
                     const container = document.getElementById('lwc-chart');
                     if (!container) return;
                     
@@ -205,55 +211,56 @@
                     }
                     container.innerHTML = ''; 
 
-                    // 強化寬度偵測，避免手機版抓到 0
-                    let chartWidth = container.clientWidth;
+                    // 【終極寬度防呆】取得實體寬度，若為 0 則往父層找，再為 0 則強制代入螢幕寬度
+                    let chartWidth = container.getBoundingClientRect().width;
                     if (!chartWidth || chartWidth === 0) {
-                        chartWidth = container.parentElement.clientWidth;
-                        if (!chartWidth || chartWidth === 0) {
-                            chartWidth = window.innerWidth - 32;
-                        }
+                        chartWidth = container.parentElement.getBoundingClientRect().width;
+                    }
+                    if (!chartWidth || chartWidth === 0) {
+                        // 手機版通常左右有 padding，扣除大約 40px
+                        chartWidth = window.innerWidth ? window.innerWidth - 40 : 320; 
                     }
 
-                    const chart = LightweightCharts.createChart(container, {
-                        width: chartWidth,
-                        height: 400,
-                        layout: { background: { color: '#ffffff' }, textColor: '#475569' },
-                        grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
-                        rightPriceScale: { borderColor: '#cbd5e1' },
-                        timeScale: { borderColor: '#cbd5e1' },
-                        crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
-                    });
-                    
-                    window.lwcChartInstance = chart;
+                    try {
+                        const chart = LightweightCharts.createChart(container, {
+                            width: Math.floor(chartWidth),
+                            height: 400,
+                            layout: { background: { color: '#ffffff' }, textColor: '#475569' },
+                            grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
+                            rightPriceScale: { borderColor: '#cbd5e1' },
+                            timeScale: { borderColor: '#cbd5e1' },
+                            crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+                        });
+                        
+                        window.lwcChartInstance = chart;
 
-                    const candleSeries = chart.addCandlestickSeries({
-                        upColor: '#ef4444', 
-                        downColor: '#22c55e', 
-                        borderVisible: false,
-                        wickUpColor: '#ef4444', 
-                        wickDownColor: '#22c55e'
-                    });
+                        const candleSeries = chart.addCandlestickSeries({
+                            upColor: '#ef4444', 
+                            downColor: '#22c55e', 
+                            borderVisible: false,
+                            wickUpColor: '#ef4444', 
+                            wickDownColor: '#22c55e'
+                        });
 
-                    const ma240Series = chart.addLineSeries({ 
-                        color: '#f59e0b', lineWidth: 2, title: '年線', crosshairMarkerVisible: false 
-                    });
+                        const ma240Series = chart.addLineSeries({ 
+                            color: '#f59e0b', lineWidth: 2, title: '年線', crosshairMarkerVisible: false 
+                        });
 
-                    const ma2400Series = chart.addLineSeries({ 
-                        color: '#a855f7', lineWidth: 2, title: '十年線', crosshairMarkerVisible: false 
-                    });
+                        const ma2400Series = chart.addLineSeries({ 
+                            color: '#a855f7', lineWidth: 2, title: '十年線', crosshairMarkerVisible: false 
+                        });
 
-                    const volumeSeries = chart.addHistogramSeries({
-                        priceFormat: { type: 'volume' },
-                        priceScaleId: '', 
-                    });
-                    volumeSeries.priceScale().applyOptions({
-                        scaleMargins: { top: 0.8, bottom: 0 }, 
-                    });
-                    
-                    const rawChartData = JSON.parse(JSON.stringify(this.chartData));
-                    
-                    if (rawChartData && rawChartData.length > 0) {
-                        try {
+                        const volumeSeries = chart.addHistogramSeries({
+                            priceFormat: { type: 'volume' },
+                            priceScaleId: '', 
+                        });
+                        volumeSeries.priceScale().applyOptions({
+                            scaleMargins: { top: 0.8, bottom: 0 }, 
+                        });
+                        
+                        const rawChartData = JSON.parse(JSON.stringify(this.chartData));
+                        
+                        if (rawChartData && rawChartData.length > 0) {
                             candleSeries.setData(rawChartData);
                             ma240Series.setData(JSON.parse(JSON.stringify(this.ma240Data)));
                             ma2400Series.setData(JSON.parse(JSON.stringify(this.ma2400Data)));
@@ -266,22 +273,23 @@
                             volumeSeries.setData(volumeData);
                             
                             chart.timeScale().fitContent();
-                        } catch (err) {
-                            console.error("圖表資料繪製失敗:", err);
                         }
-                    }
+                        
+                        this.chartRendered = true;
 
-                    this.chartRendered = true;
-
-                    if (window.ResizeObserver) {
-                        const resizeObserver = new ResizeObserver(entries => {
-                            if (entries.length === 0 || entries[0].target !== container) return;
-                            const newRect = entries[0].contentRect;
-                            if (window.lwcChartInstance && newRect.width > 0) {
-                                window.lwcChartInstance.applyOptions({ width: newRect.width });
-                            }
-                        });
-                        resizeObserver.observe(container);
+                        // RWD 視窗縮放監聽
+                        if (window.ResizeObserver) {
+                            const resizeObserver = new ResizeObserver(entries => {
+                                if (entries.length === 0 || entries[0].target !== container) return;
+                                const newRect = entries[0].contentRect;
+                                if (window.lwcChartInstance && newRect.width > 0) {
+                                    window.lwcChartInstance.applyOptions({ width: Math.floor(newRect.width) });
+                                }
+                            });
+                            resizeObserver.observe(container);
+                        }
+                    } catch (err) {
+                        console.error("圖表實例建立失敗:", err);
                     }
                 },
                 // -----------------
@@ -544,15 +552,15 @@
 
                     await this.fetchRealTimePrice();
 
-                    // 判斷要抓取多久的資料
+                    // 【核心修正】判斷抓取區間：如果有快取，只抓最近 5 天
                     let startDateStr = '';
                     let yfRange = 'max';
                     if (this.cachedHistoricalData && this.cachedHistoricalData.length > 0) {
-                        // 有快取：只抓最近 1 個月的資料來補齊，大幅節省時間
+                        // 有快取：只抓最近 5 天的資料來補齊，大幅節省時間
                         const d = new Date();
-                        d.setMonth(d.getMonth() - 1);
+                        d.setDate(d.getDate() - 5);
                         startDateStr = d.toISOString().split('T')[0];
-                        yfRange = '1mo';
+                        yfRange = '5d';
                     } else {
                         // 無快取：抓取 12 年歷史資料
                         const d = new Date();
@@ -717,7 +725,6 @@
                         if (!this.currentVolume) this.currentVolume = data[len - 1].volume || 0;
                     }
 
-                    // --- 整理圖表所需的 OHLC 唯一資料，強制數值轉換防呆 ---
                     let uniqueChartData = [];
                     let seen = new Set();
                     for (let d of data) {
@@ -725,7 +732,6 @@
                         let timeStr = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
                         
                         let closeVal = Number(d.close);
-                        // 確保資料唯一性且排除無效數值 (例如國定假日空資料)
                         if (!seen.has(timeStr) && !isNaN(closeVal) && closeVal > 0) {
                             seen.add(timeStr);
                             uniqueChartData.push({ 
@@ -740,12 +746,10 @@
                     }
                     this.chartData = uniqueChartData;
 
-                    // 取昨日收盤價計算漲跌幅
                     if (this.chartData.length >= 2) {
                         this.prevClose = this.chartData[this.chartData.length - 2].close;
                     }
 
-                    // 計算 MA240, MA2400 給圖表畫線用
                     let ma240Arr = [];
                     let ma2400Arr = [];
                     for (let i = 0; i < uniqueChartData.length; i++) {
@@ -762,7 +766,6 @@
                     }
                     this.ma240Data = ma240Arr;
                     this.ma2400Data = ma2400Arr;
-                    // ---------------------------------
 
                     if (len >= 2400) {
                         let sum = 0;
@@ -776,7 +779,6 @@
                         this.calc_ma240 = sum / 240;
                     }
 
-                    // 計算 20 日(月均量) 與 (月均價) 判斷爆量/量縮與價格乖離
                     if (len >= 20) {
                         let sumVol = 0;
                         let sumPrice = 0;
@@ -785,19 +787,17 @@
                             sumPrice += data[i].close;
                         }
                         let avgVol = sumVol / 20;
-                        this.calc_ma20 = sumPrice / 20; // 月均價
+                        this.calc_ma20 = sumPrice / 20; 
                         
                         let targetVol = this.currentVolume > 0 ? this.currentVolume : (data[len-1].volume || 0);
                         this.currentVolume = targetVol; 
                         
-                        // 1. 成交量判斷
                         if (avgVol > 0) {
                             if (targetVol > avgVol * 1.5) this.volumeStatus = '🔥';
                             else if (targetVol < avgVol * 0.6) this.volumeStatus = '🧊';
                             else this.volumeStatus = '正常';
                         }
                         
-                        // 2. 價格乖離率 (Bias) 判斷，門檻設定為 ±5%
                         if (this.currentPrice > this.calc_ma20 * 1.05) {
                             this.priceStatus = '🚀'; 
                         } else if (this.currentPrice < this.calc_ma20 * 0.95) {
@@ -1004,10 +1004,9 @@
                 get profit() { return (this.marketValueNum + this.totalCashIn - this.totalCashOut).toFixed(0); },
                 get roi() { return this.totalCashOut <= 0 ? null : (((this.marketValueNum + this.totalCashIn - this.totalCashOut) / this.totalCashOut) * 100).toFixed(2); },
 
-                // --- 退休提領邏輯 (Guyton-Klinger 動態提領) ---
                 get targetFireFund() {
                     let monthly = parseFloat(this.targetMonthlyExpense) || 0;
-                    return monthly * 12 / 0.04; // 基準 4%
+                    return monthly * 12 / 0.04; 
                 },
                 get fireProgress() {
                     if (this.targetFireFund <= 0) return 0;
@@ -1015,7 +1014,7 @@
                     return Math.min(100, pct).toFixed(1);
                 },
                 get currentSafeMonthlyWithdrawal() {
-                    return (this.marketValueNum * 0.04 / 12).toFixed(0); // 單純 4% 數字顯示用
+                    return (this.marketValueNum * 0.04 / 12).toFixed(0); 
                 },
                 get currentWithdrawalRate() {
                     if (this.marketValueNum <= 0) return 0;
@@ -1038,7 +1037,6 @@
                         };
                     }
 
-                    // 護欄機制：上限 4.8%，下限 3.2%
                     if (r > 0.048) {
                         return { 
                             state: 'danger', 
@@ -1185,7 +1183,6 @@
         });
     </script>
     
-    <!-- 加入了 defer 屬性，確保 Alpine.js 能夠正確初始化作用域 -->
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
 </head>
@@ -1236,26 +1233,22 @@
                         </button>
                     </div>
                     
-                    <!-- 【調整排版】價格、漲跌幅、價格狀態合併在一行 -->
                     <div class="text-2xl font-black text-slate-800 flex flex-wrap items-center justify-end gap-2 mt-1">
                         <span x-show="isFetching || isFetchingPrice" class="text-sm text-slate-400"><i class="fa-solid fa-rotate-right animate-spin"></i> 抓取中...</span>
                         <span x-show="!isFetching && !isFetchingPrice" x-text="currentPrice > 0 ? currentPrice : '無法取得'"></span>
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="text-base font-normal">元</span>
                         
-                        <!-- 漲跌幅與百分比 -->
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && prevClose > 0" class="text-sm font-bold ml-1 flex items-center" :class="currentPrice >= prevClose ? 'text-red-500' : 'text-green-500'">
                             <i class="fa-solid mr-1" :class="currentPrice >= prevClose ? 'fa-caret-up' : 'fa-caret-down'"></i>
                             <span x-text="Math.abs(currentPrice - prevClose).toFixed(2)"></span>
                             <span class="text-xs ml-0.5" x-text="'(' + (((currentPrice - prevClose) / prevClose) * 100).toFixed(2) + '%)'"></span>
                         </span>
                         
-                        <!-- 價格狀態 (移至漲跌幅後方) -->
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '🚀'" class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線爆漲 (高於月均價5%以上)">🚀 短線爆漲</span>
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '📉'" class="text-green-600 font-bold bg-green-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線超跌 (低於月均價5%以上)">📉 短線超跌</span>
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '⚖️'" class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="貼近月線 (與月均價乖離5%以內)">⚖️ 貼近月線</span>
                     </div>
                     
-                    <!-- 狀態標籤列：僅保留成交量狀態 -->
                     <div x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="flex flex-wrap items-center justify-end gap-1 mt-1.5">
                         <span class="text-slate-500 text-xs mr-0.5">量: <span x-text="formatMoney(currentVolume / 1000)"></span>張</span>
                         <span x-show="volumeStatus === '🔥'" class="text-orange-600 font-bold bg-orange-100 px-1.5 py-0.5 rounded text-[10px]" title="熱門爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
@@ -1345,7 +1338,7 @@
                 <span x-show="historicalDataLoaded" x-text="showChart ? '收合 0050 長期技術與均線圖' : '📊 展開 0050 長期技術與均線圖'"></span>
             </button>
 
-            <!-- 關鍵修正：移除了 x-transition，避免它在動畫期間干擾 Canvas 導致寬度 0 -->
+            <!-- 關鍵修正：移除了 x-transition 避免動畫期間干擾寬度判斷，並確保 display:block 立刻生效 -->
             <div x-show="showChart" class="bg-white p-1 sm:p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 w-full relative" x-cloak>
                 <div class="text-xs font-bold text-slate-500 mb-2 pl-2"><i class="fa-solid fa-lightbulb text-yellow-500"></i> 滑鼠滾輪可縮放，拖曳可平移。您可清楚看見價格與各均線的相對位階。</div>
                 <div id="lwc-chart" style="width: 100%; height: 400px; display: block;" class="rounded-lg overflow-hidden border border-slate-100 relative"></div>
@@ -1469,7 +1462,6 @@
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">一、 技術面指標 (價格與動能)</h3>
                         
                         <div class="space-y-6 pl-2">
-                            <!-- 新增：短線儀表板說明區塊 -->
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-gauge-high text-red-500"></i>短線儀表板 (月線乖離與量能)</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 系統於主控台右上角提供即時狀態標籤，主要計算市價與 20 日均線的「乖離率 (Bias)」，以及今日成交量與 20 日均量的倍數關係。</p>
@@ -1684,7 +1676,6 @@
                         </div>
                     </section>
                     
-                    <!-- 【核心更新】四、 退休與財務自由 (Guyton-Klinger 動態提領護欄) -->
                     <section>
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">四、 退休與財務自由 (清流君動態提領護欄)</h3>
                         
@@ -1703,7 +1694,6 @@
                                     <strong>防禦機制 (極度重要)：</strong> 退休前請務必準備 <strong>2~3 年生活費的「現金緩衝墊」</strong>（放定存或高利活存）。當遇到像 2008 年級別的股災，帳面重挫時，那兩年就<span class="text-red-500 font-bold">絕對不要賣股票</span>，改用這筆現金生活。
                                 </p>
 
-                                <!-- 提領試算工具 -->
                                 <div class="p-4 bg-white rounded-xl border border-indigo-200 shadow-sm">
                                     <div class="flex items-center gap-2 mb-4 pb-2 border-b border-indigo-100">
                                         <i class="fa-solid fa-compass-drafting text-indigo-500"></i>
@@ -1711,7 +1701,6 @@
                                     </div>
 
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-5">
-                                        <!-- 目標設定區 -->
                                         <div>
                                             <label class="block text-sm font-bold text-slate-700 mb-2">您期望的退休「每月」預算：</label>
                                             <div class="flex items-center gap-2 mb-3">
@@ -1724,12 +1713,10 @@
                                             </div>
                                         </div>
 
-                                        <!-- 現況區 -->
                                         <div>
                                             <div class="text-sm text-slate-600 mb-1">您目前的 0050 總市值：</div>
                                             <div class="text-2xl font-black text-slate-800 mb-3" x-text="formatMoney(marketValueNum) + ' 元'"></div>
                                             
-                                            <!-- 財務自由進度條 -->
                                             <div class="w-full bg-slate-200 rounded-full h-3 mb-1 overflow-hidden">
                                                 <div class="bg-indigo-500 h-3 rounded-full transition-all duration-1000" :style="`width: ${fireProgress}%`"></div>
                                             </div>
@@ -1740,7 +1727,6 @@
                                         </div>
                                     </div>
 
-                                    <!-- GK 動態結果面板 -->
                                     <div class="p-4 rounded-lg border transition-colors duration-500" :class="`${gkStatus.bg} ${gkStatus.border}`">
                                         <div class="text-sm font-black mb-2 flex items-center gap-2" :class="gkStatus.color">
                                             <span x-text="gkStatus.title"></span>
@@ -1781,7 +1767,6 @@
                             <span class="text-blue-600 font-bold">💡 提示：</span>如果您打算在「第四步」逐筆輸入完整的歷史買賣紀錄來精算 XIRR，<span class="text-red-500 font-bold underline">請務必將此處設為 0</span>，交由系統透過明細自動加總即可！
                         </p>
 
-                        <!-- 智能防呆警告：當使用者有手動輸入歷史明細，但期初庫存又大於 0 時觸發 -->
                         <div x-show="baseShares > 0 && transactions.length > 0" class="mb-5 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 shadow-sm" x-cloak>
                             <div class="flex items-start gap-3">
                                 <i class="fa-solid fa-triangle-exclamation text-lg mt-0.5"></i>
@@ -1891,7 +1876,6 @@
                             系統的自動定期定額與單筆紀錄都會顯示在此。您可以點擊「新增一筆交易」來補足過去不同金額的扣款紀錄。這些完整紀錄是計算精確 XIRR 的核心資料。
                         </p>
                         
-                        <!-- 加上 id="txnList" 讓 JavaScript 可以抓到這個容器來控制捲軸 -->
                         <div id="txnList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             <template x-for="(txn, index) in transactions" :key="txn.id">
                                 <div class="flex flex-col sm:flex-row sm:items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative transition-all hover:border-blue-300">
@@ -1909,7 +1893,6 @@
 
                                     <!-- Amount & Shares -->
                                     <div class="flex-1 flex items-center gap-2 mt-2 sm:mt-0">
-                                        <!-- 把 min="0" 拿掉，因為微調差額有可能是負數 (代表你買得比系統算的便宜) -->
                                         <input type="number" x-model.number="txn.amount" placeholder="總金額" class="w-full sm:w-28 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'dividend'">元,</span>
                                         <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action === 'dividend'" x-cloak>元</span>
