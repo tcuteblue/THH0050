@@ -89,14 +89,16 @@
                 cond_discount: false, 
 
                 currentPrice: 0,
-                prevClose: 0,          // 新增：昨日收盤價 (計算漲跌幅用)
+                prevClose: 0,          
                 currentVolume: 0,      
                 volumeStatus: '',      
+                priceStatus: '',       
                 isFetching: false,
                 isFetchingPrice: false,
                 realTimeFetched: false,
                 historicalDataLoaded: false,
                 calc_k: 0,
+                calc_ma20: 0,
                 calc_ma120: 0, 
                 calc_ma240: 0,
                 
@@ -113,9 +115,9 @@
 
                 targetMonthlyExpense: 50000,
                 
-                // 新增：圖表相關狀態
                 showChart: false,
                 chartRendered: false,
+                chartInstance: null, // 新增：保存圖表實例以避免重複渲染
                 chartData: [],
                 ma240Data: [],
                 ma2400Data: [],
@@ -156,7 +158,7 @@
                 // --- 圖表控制區 ---
                 toggleChart() {
                     this.showChart = !this.showChart;
-                    if (this.showChart && !this.chartRendered) {
+                    if (this.showChart) {
                         this.$nextTick(() => {
                             this.renderChart();
                         });
@@ -167,7 +169,12 @@
                     const container = document.getElementById('lwc-chart');
                     if (!container) return;
                     
-                    container.innerHTML = ''; // 清空可能存在的舊圖
+                    // 清除舊圖表實例，避免 Alpine 重新渲染時產生多個 Canvas
+                    if (this.chartInstance) {
+                        this.chartInstance.remove();
+                        this.chartInstance = null;
+                    }
+                    container.innerHTML = ''; 
 
                     const chart = LightweightCharts.createChart(container, {
                         width: container.clientWidth,
@@ -176,12 +183,10 @@
                         grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
                         rightPriceScale: { borderColor: '#cbd5e1' },
                         timeScale: { borderColor: '#cbd5e1' },
-                        crosshair: {
-                            mode: LightweightCharts.CrosshairMode.Normal,
-                        }
+                        crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
                     });
+                    this.chartInstance = chart;
 
-                    // 1. K線圖 (紅漲綠跌)
                     const candleSeries = chart.addCandlestickSeries({
                         upColor: '#ef4444', 
                         downColor: '#22c55e', 
@@ -189,48 +194,52 @@
                         wickUpColor: '#ef4444', 
                         wickDownColor: '#22c55e'
                     });
-                    candleSeries.setData(this.chartData);
 
-                    // 2. 年線 (MA240)
                     const ma240Series = chart.addLineSeries({ 
-                        color: '#f59e0b', 
-                        lineWidth: 2, 
-                        title: '年線',
-                        crosshairMarkerVisible: false
+                        color: '#f59e0b', lineWidth: 2, title: '年線', crosshairMarkerVisible: false 
                     });
-                    ma240Series.setData(this.ma240Data);
 
-                    // 3. 十年線 (MA2400)
                     const ma2400Series = chart.addLineSeries({ 
-                        color: '#a855f7', 
-                        lineWidth: 2, 
-                        title: '十年線',
-                        crosshairMarkerVisible: false
+                        color: '#a855f7', lineWidth: 2, title: '十年線', crosshairMarkerVisible: false 
                     });
-                    ma2400Series.setData(this.ma2400Data);
 
-                    // 4. 成交量副圖
                     const volumeSeries = chart.addHistogramSeries({
                         priceFormat: { type: 'volume' },
-                        priceScaleId: '', // 設定為獨立/疊加 Scale
+                        priceScaleId: '', 
                     });
                     volumeSeries.priceScale().applyOptions({
-                        scaleMargins: { top: 0.8, bottom: 0 }, // 壓在底部 20%
+                        scaleMargins: { top: 0.8, bottom: 0 }, 
                     });
                     
-                    const volumeData = this.chartData.map(d => ({
-                        time: d.time,
-                        value: d.volume,
-                        color: d.close >= d.open ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'
-                    }));
-                    volumeSeries.setData(volumeData);
+                    // 【關鍵修正】解開 Alpine 的 Proxy 包裝，否則 Lightweight Charts 讀取資料會報錯
+                    const rawChartData = JSON.parse(JSON.stringify(this.chartData));
+                    
+                    if (rawChartData && rawChartData.length > 0) {
+                        candleSeries.setData(rawChartData);
+                        ma240Series.setData(JSON.parse(JSON.stringify(this.ma240Data)));
+                        ma2400Series.setData(JSON.parse(JSON.stringify(this.ma2400Data)));
+                        
+                        const volumeData = rawChartData.map(d => ({
+                            time: d.time,
+                            value: d.volume,
+                            color: d.close >= d.open ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'
+                        }));
+                        volumeSeries.setData(volumeData);
+                        
+                        // 自動適應畫面範圍
+                        chart.timeScale().fitContent();
+                    }
 
                     this.chartRendered = true;
 
-                    // RWD 視窗縮放適應
-                    window.addEventListener('resize', () => {
-                        if (container) chart.resize(container.clientWidth, 400);
-                    });
+                    // 綁定 RWD 視窗縮放
+                    const resizeHandler = () => {
+                        if (container && this.chartInstance) {
+                            this.chartInstance.resize(container.clientWidth, 400);
+                        }
+                    };
+                    window.removeEventListener('resize', resizeHandler);
+                    window.addEventListener('resize', resizeHandler);
                 },
                 // -----------------
 
@@ -630,17 +639,23 @@
                         if (!this.currentVolume) this.currentVolume = data[len - 1].volume || 0;
                     }
 
-                    // --- 整理圖表所需的 OHLC 唯一資料 ---
+                    // --- 整理圖表所需的 OHLC 唯一資料，強制數值轉換防呆 ---
                     let uniqueChartData = [];
                     let seen = new Set();
                     for (let d of data) {
                         let t = new Date(d.time);
                         let timeStr = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-                        // 確保資料唯一性，並過濾掉沒有開收盤價的異常日
-                        if (!seen.has(timeStr) && d.open !== undefined && d.close !== undefined) {
+                        
+                        // 確保資料唯一性且不會傳入 null 給圖表套件
+                        if (!seen.has(timeStr) && d.close !== undefined && d.close !== null) {
                             seen.add(timeStr);
                             uniqueChartData.push({ 
-                                time: timeStr, open: d.open, high: d.high, low: d.low, close: d.close, volume: d.volume 
+                                time: timeStr, 
+                                open: Number(d.open ?? d.close), 
+                                high: Number(d.high ?? d.close), 
+                                low: Number(d.low ?? d.close), 
+                                close: Number(d.close), 
+                                volume: Number(d.volume || 0) 
                             });
                         }
                     }
@@ -682,20 +697,34 @@
                         this.calc_ma240 = sum / 240;
                     }
 
-                    // 修改為：計算 20 日(月均量)判斷爆量/量縮
+                    // 計算 20 日(月均量) 與 (月均價) 判斷爆量/量縮與價格乖離
                     if (len >= 20) {
                         let sumVol = 0;
-                        for(let i = len - 20; i < len; i++) sumVol += (data[i].volume || 0);
+                        let sumPrice = 0;
+                        for(let i = len - 20; i < len; i++) {
+                            sumVol += (data[i].volume || 0);
+                            sumPrice += data[i].close;
+                        }
                         let avgVol = sumVol / 20;
+                        this.calc_ma20 = sumPrice / 20; // 月均價
                         
                         let targetVol = this.currentVolume > 0 ? this.currentVolume : (data[len-1].volume || 0);
                         this.currentVolume = targetVol; 
                         
+                        // 1. 成交量判斷
                         if (avgVol > 0) {
-                            // 爆量 > 月均量 1.5倍，量縮 < 月均量 0.6倍
                             if (targetVol > avgVol * 1.5) this.volumeStatus = '🔥';
                             else if (targetVol < avgVol * 0.6) this.volumeStatus = '🧊';
                             else this.volumeStatus = '正常';
+                        }
+                        
+                        // 2. 價格乖離率 (Bias) 判斷，門檻設定為 ±5%
+                        if (this.currentPrice > this.calc_ma20 * 1.05) {
+                            this.priceStatus = '🚀'; 
+                        } else if (this.currentPrice < this.calc_ma20 * 0.95) {
+                            this.priceStatus = '📉'; 
+                        } else {
+                            this.priceStatus = '⚖️'; 
                         }
                     }
 
@@ -1127,24 +1156,32 @@
                             <i class="fa-solid fa-arrows-rotate" :class="{'animate-spin text-blue-500': isFetchingPrice}"></i>
                         </button>
                     </div>
-                    <div class="text-2xl font-black text-slate-800 flex items-center justify-end gap-2 mt-1">
+                    
+                    <!-- 【調整排版】價格、漲跌幅、價格狀態合併在一行 -->
+                    <div class="text-2xl font-black text-slate-800 flex flex-wrap items-center justify-end gap-2 mt-1">
                         <span x-show="isFetching || isFetchingPrice" class="text-sm text-slate-400"><i class="fa-solid fa-rotate-right animate-spin"></i> 抓取中...</span>
                         <span x-show="!isFetching && !isFetchingPrice" x-text="currentPrice > 0 ? currentPrice : '無法取得'"></span>
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="text-base font-normal">元</span>
                         
-                        <!-- 新增：精緻漲跌幅與百分比 -->
+                        <!-- 漲跌幅與百分比 -->
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && prevClose > 0" class="text-sm font-bold ml-1 flex items-center" :class="currentPrice >= prevClose ? 'text-red-500' : 'text-green-500'">
                             <i class="fa-solid mr-1" :class="currentPrice >= prevClose ? 'fa-caret-up' : 'fa-caret-down'"></i>
                             <span x-text="Math.abs(currentPrice - prevClose).toFixed(2)"></span>
                             <span class="text-xs ml-0.5" x-text="'(' + (((currentPrice - prevClose) / prevClose) * 100).toFixed(2) + '%)'"></span>
                         </span>
+                        
+                        <!-- 價格狀態 (移至漲跌幅後方) -->
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '🚀'" class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線爆漲 (高於月均價5%以上)">🚀 短線爆漲</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '📉'" class="text-green-600 font-bold bg-green-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線超跌 (低於月均價5%以上)">📉 短線超跌</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '⚖️'" class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="貼近月線 (與月均價乖離5%以內)">⚖️ 貼近月線</span>
                     </div>
                     
-                    <!-- 升級：月均量狀態顯示 -->
-                    <div x-show="!isFetching && !isFetchingPrice && currentVolume > 0" class="text-xs flex items-center justify-end gap-1 mt-1">
-                        <span class="text-slate-500">成交量: <span x-text="formatMoney(currentVolume / 1000)"></span> 張</span>
-                        <span x-show="volumeStatus === '🔥'" class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px]" title="爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
-                        <span x-show="volumeStatus === '🧊'" class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px]" title="量縮 (低於月均量0.6倍)">🧊 冷清量縮</span>
+                    <!-- 狀態標籤列：僅保留成交量狀態 -->
+                    <div x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="flex flex-wrap items-center justify-end gap-1 mt-1.5">
+                        <span class="text-slate-500 text-xs mr-0.5">量: <span x-text="formatMoney(currentVolume / 1000)"></span>張</span>
+                        <span x-show="volumeStatus === '🔥'" class="text-orange-600 font-bold bg-orange-100 px-1.5 py-0.5 rounded text-[10px]" title="熱門爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
+                        <span x-show="volumeStatus === '🧊'" class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px]" title="冷清量縮 (低於月均量0.6倍)">🧊 冷清量縮</span>
+                        <span x-show="volumeStatus === '正常'" class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px]" title="溫和量能 (接近月均量)">🌊 溫和量能</span>
                     </div>
                 </div>
             </div>
@@ -1351,6 +1388,62 @@
                         <h3 class="text-lg font-bold text-primary mb-4 border-l-4 border-primary pl-3">一、 技術面指標 (價格與動能)</h3>
                         
                         <div class="space-y-6 pl-2">
+                            <!-- 新增：短線儀表板說明區塊 -->
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-gauge-high text-red-500"></i>短線儀表板 (月線乖離與量能)</h4>
+                                <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 系統於主控台右上角提供即時狀態標籤，主要計算市價與 20 日均線的「乖離率 (Bias)」，以及今日成交量與 20 日均量的倍數關係。</p>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3 text-sm text-slate-700">
+                                    <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                        <div class="font-bold mb-2 border-b pb-1 text-slate-800">價格乖離狀態圖示說明：</div>
+                                        <ul class="space-y-2 mt-2">
+                                            <li class="flex items-start gap-2">
+                                                <span class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🚀 短線爆漲</span> 
+                                                <span class="text-xs leading-relaxed">高於月均價 5% 以上。代表短線正乖離過大，情緒過熱，隨時可能發生技術性拉回。</span>
+                                            </li>
+                                            <li class="flex items-start gap-2">
+                                                <span class="text-green-600 font-bold bg-green-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">📉 短線超跌</span> 
+                                                <span class="text-xs leading-relaxed">低於月均價 5% 以上。代表短線負乖離過大，過度恐慌，醞釀技術性反彈的機率極高。</span>
+                                            </li>
+                                            <li class="flex items-start gap-2">
+                                                <span class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">⚖️ 貼近月線</span> 
+                                                <span class="text-xs leading-relaxed">與月均價乖離 5% 內。屬於健康的合理區間震盪，為一般常態 (中間值)。</span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                        <div class="font-bold mb-2 border-b pb-1 text-slate-800">成交量能狀態圖示說明：</div>
+                                        <ul class="space-y-2 mt-2">
+                                            <li class="flex items-start gap-2">
+                                                <span class="text-orange-600 font-bold bg-orange-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🔥 熱門爆量</span> 
+                                                <span class="text-xs leading-relaxed">大於月均量 1.5 倍。籌碼換手熱烈，若在低檔爆量常為反轉訊號，高檔爆量則需警覺。</span>
+                                            </li>
+                                            <li class="flex items-start gap-2">
+                                                <span class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🧊 冷清量縮</span> 
+                                                <span class="text-xs leading-relaxed">小於月均量 0.6 倍。市場觀望氣氛濃厚，買賣意願低迷，常出現於盤整期。</span>
+                                            </li>
+                                            <li class="flex items-start gap-2">
+                                                <span class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🌊 溫和量能</span> 
+                                                <span class="text-xs leading-relaxed">介於 0.6 ~ 1.5 倍之間。接近月均量，為一般正常平穩的流動性狀態 (中間值)。</span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                    <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
+                                    <div x-show="historicalDataLoaded">
+                                        <p class="text-sm text-slate-700 leading-relaxed">
+                                            目前 20 日月均價約為 <strong x-text="calc_ma20.toFixed(2)"></strong> 元。<br>
+                                            <span x-show="priceStatus === '🚀'" class="text-red-600 font-bold mt-1 inline-block">目前市價大幅偏離均線向上，系統判定為「🚀 短線爆漲」。</span>
+                                            <span x-show="priceStatus === '📉'" class="text-green-600 font-bold mt-1 inline-block">目前市價大幅低於均線向下，系統判定為「📉 短線超跌」。</span>
+                                            <span x-show="priceStatus === '⚖️'" class="text-slate-600 font-bold mt-1 inline-block">目前市價維持在月均價 ±5% 之內，屬於正常的「⚖️ 貼近月線」狀態。</span>
+                                        </p>
+                                    </div>
+                                    <div x-show="!historicalDataLoaded" class="text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 指標計算中...</div>
+                                </div>
+                            </div>
+
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-bolt text-yellow-500"></i>短線狀態 (動能與情緒)</h4>
                                 <p class="text-sm mb-3 text-slate-600"><strong>技術原理：</strong> 主要參考 KDJ 指標。KDJ 透過比較一段時間內的收盤價與最高/最低價，來衡量市場的「超買」或「超賣」情緒。當K值低於20時，代表近期股價在區間內接近低點，短線市場情緒偏悲觀，確實常出現反彈。但要留意，超跌不等於最低點，在空頭市場中，K值可能長時間停留在低檔，如果你一看到 K < 20 就把子彈打光，後續真正見到底部時，你反而沒錢加碼，這在心理上會造成巨大的挫折感。因此把 K < 20 當作「短線加碼參考」，是合理的，但不適合當作唯一依據。</p>
@@ -1471,7 +1564,7 @@
                             <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <h4 class="font-bold text-slate-800 mb-2 flex items-center gap-2"><i class="fa-solid fa-water text-cyan-500"></i>市場恐慌度 (大盤融資餘額)</h4>
                                 <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 觀察散戶的「融資餘額」變化。融資是借錢買股，當股市大跌面臨斷頭追繳時，會引發恐慌性多殺多。</p>
-                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮動籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
+                                <p class="text-sm mb-3 text-slate-600"><strong>觀察重點：</strong> 當單日融資大幅減少（俗稱散戶斷頭），通常意味著浮 ক্যামের籌碼已清洗乾淨，市場恐慌達到極致，底部即將浮現。</p>
 
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
