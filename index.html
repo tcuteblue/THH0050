@@ -161,9 +161,11 @@
                     
                     this.showChart = !this.showChart;
                     if (this.showChart) {
-                        this.$nextTick(() => {
+                        // 【關鍵修正】手機端有時 DOM 動畫還沒跑完，寬度會是 0。
+                        // 改用 setTimeout 等待展開動畫 (300ms) 確實結束後再繪製圖表。
+                        setTimeout(() => {
                             this.renderChart();
-                        });
+                        }, 350);
                     }
                 },
 
@@ -178,8 +180,11 @@
                     }
                     container.innerHTML = ''; 
 
-                    // 確保容器有正確寬度
-                    const chartWidth = container.clientWidth || container.getBoundingClientRect().width || 800;
+                    // 確保容器有正確寬度，如果為 0，則給予手機螢幕的預估寬度做為備援
+                    let chartWidth = container.clientWidth;
+                    if (!chartWidth || chartWidth === 0) {
+                        chartWidth = window.innerWidth - 32; // 扣除 padding
+                    }
 
                     const chart = LightweightCharts.createChart(container, {
                         width: chartWidth,
@@ -246,7 +251,8 @@
                     const resizeObserver = new ResizeObserver(entries => {
                         if (entries.length === 0 || entries[0].target !== container) return;
                         const newRect = entries[0].contentRect;
-                        if (window.lwcChartInstance) {
+                        // 確保寬度大於 0 才更新，避免圖表引擎崩潰
+                        if (window.lwcChartInstance && newRect.width > 0) {
                             window.lwcChartInstance.applyOptions({ width: newRect.width });
                         }
                     });
@@ -1560,7 +1566,7 @@
                                 <p class="text-sm mb-2 text-slate-600"><strong>技術原理：</strong> 國發會每月公佈的信號，綜合了出口、股價、就業等數據，反映台灣整體的經濟冷熱。</p>
                                 <p class="text-sm mb-2 text-slate-600"><strong>觀察重點：</strong> 股市領先基本面。「藍燈」代表景氣最低迷、百業蕭條，但此時往往是股市的長線最低點。「買在藍燈、賣在紅燈」是 0050 勝率極高的經典策略。</p>
                                 <div class="mt-4 border-t border-slate-200 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <p class="text-xs text-slate-500">※ 註：此資料因發布格式原因無法穩定自動抓取，請手動查詢當月燈號。</p>
+                                    <p class="text-xs text-slate-500">※ 註：此資料因發布格式原因無法穩定自動抓取，請手手動查詢當月燈號。</p>
                                     <a href="https://index.ndc.gov.tw/n/zh_tw" target="_blank" class="inline-flex items-center justify-center px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-bold text-sm transition whitespace-nowrap shadow-sm">
                                         <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>前往國發會查詢
                                     </a>
@@ -1924,4 +1930,5 @@
     </script>
 </body>
 </html>
+
 
