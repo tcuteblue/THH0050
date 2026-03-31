@@ -26,8 +26,8 @@
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- 引入 TradingView Lightweight Charts -->
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- 引入 TradingView Lightweight Charts (已鎖定 4.1.1 穩定版，避免 addCandlestickSeries 報錯) -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 
     <style>
         html { font-size: 20px; }
@@ -218,21 +218,19 @@
 
                     let chartWidth = container.clientWidth;
                     if (!chartWidth || chartWidth === 0) {
-                        chartWidth = container.parentElement.clientWidth;
+                        chartWidth = container.parentElement ? container.parentElement.clientWidth : 0;
                     }
-                    if (!chartWidth || chartWidth === 0) {
-                        chartWidth = window.innerWidth ? window.innerWidth - 40 : 320; 
-                    }
+                    let finalWidth = Math.max(280, Math.floor(chartWidth || (window.innerWidth ? window.innerWidth - 40 : 320)));
 
                     try {
                         const chart = LightweightCharts.createChart(container, {
-                            width: Math.floor(chartWidth),
+                            width: finalWidth,
                             height: 400,
                             layout: { background: { color: '#ffffff' }, textColor: '#475569' },
                             grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
                             rightPriceScale: { borderColor: '#cbd5e1' },
                             timeScale: { borderColor: '#cbd5e1' },
-                            crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+                            crosshair: { mode: 0 } // 防呆：直接寫 0 (Normal)，避免列舉常數遺失導致錯誤
                         });
                         
                         window.lwcChartInstance = chart;
@@ -254,7 +252,17 @@
                         // 防呆：再次確保資料是深拷貝且時間遞增無重複
                         let rawChartData = JSON.parse(JSON.stringify(this.chartData));
                         if (rawChartData && rawChartData.length > 0) {
-                            candleSeries.setData(rawChartData);
+                            
+                            // 終極防呆：嚴格剔除 candle 不需要的多餘屬性(如 volume)，避免套件內部驗證崩潰
+                            const cleanCandles = rawChartData.map(d => ({
+                                time: d.time,
+                                open: d.open,
+                                high: d.high,
+                                low: d.low,
+                                close: d.close
+                            }));
+                            candleSeries.setData(cleanCandles);
+                            
                             ma240Series.setData(JSON.parse(JSON.stringify(this.ma240Data)));
                             ma2400Series.setData(JSON.parse(JSON.stringify(this.ma2400Data)));
                             
@@ -282,7 +290,7 @@
                         }
                     } catch (err) {
                         console.error("圖表實例建立失敗:", err);
-                        alert("圖表繪製發生錯誤，請稍後重試。");
+                        alert("圖表繪製發生錯誤: " + err.message + "\n請嘗試重新整理頁面。");
                     }
                 },
 
@@ -639,19 +647,29 @@
                     
                     if (this.cachedHistoricalData) {
                         for (let item of this.cachedHistoricalData) {
-                            let d = new Date(item.time);
-                            let yyyy = d.getFullYear();
-                            let mm = String(d.getMonth() + 1).padStart(2, '0');
-                            let dd = String(d.getDate()).padStart(2, '0');
-                            uniqueMap.set(`${yyyy}-${mm}-${dd}`, item);
+                            let t = new Date(item.time || item.date);
+                            if (isNaN(t.getTime())) continue; // 防呆：過濾舊版或異常快取
+                            let yyyy = t.getFullYear();
+                            let mm = String(t.getMonth() + 1).padStart(2, '0');
+                            let dd = String(t.getDate()).padStart(2, '0');
+                            
+                            uniqueMap.set(`${yyyy}-${mm}-${dd}`, {
+                                time: t.getTime(),
+                                open: item.open ?? item.close,
+                                close: item.close,
+                                high: item.high ?? item.max ?? item.close,
+                                low: item.low ?? item.min ?? item.close,
+                                volume: item.volume ?? item.Trading_Volume ?? 0
+                            });
                         }
                     }
                     
                     for (let item of fetchedData) {
-                        let d = new Date(item.time);
-                        let yyyy = d.getFullYear();
-                        let mm = String(d.getMonth() + 1).padStart(2, '0');
-                        let dd = String(d.getDate()).padStart(2, '0');
+                        let t = new Date(item.time);
+                        if (isNaN(t.getTime())) continue;
+                        let yyyy = t.getFullYear();
+                        let mm = String(t.getMonth() + 1).padStart(2, '0');
+                        let dd = String(t.getDate()).padStart(2, '0');
                         uniqueMap.set(`${yyyy}-${mm}-${dd}`, item);
                     }
 
@@ -720,28 +738,49 @@
                     let uniqueChartData = [];
                     let seen = new Set();
                     for (let d of data) {
-                        let t = new Date(d.time);
+                        let t = new Date(d.time || d.date);
+                        if (isNaN(t.getTime())) continue; // 防呆：過濾無效時間
+                        
                         let yyyy = t.getFullYear();
                         let mm = String(t.getMonth() + 1).padStart(2, '0');
                         let dd = String(t.getDate()).padStart(2, '0');
                         let timeStr = `${yyyy}-${mm}-${dd}`;
                         
                         let closeVal = Number(d.close);
+                        // 防呆：確保 close 必須是有效數字
                         if (!seen.has(timeStr) && !isNaN(closeVal) && closeVal > 0) {
                             seen.add(timeStr);
+                            
+                            // 嚴格過濾與替換可能的 NaN 值
+                            let openVal = Number(d.open);
+                            if (isNaN(openVal) || openVal <= 0) openVal = closeVal;
+                            
+                            let highVal = Number(d.high);
+                            if (isNaN(highVal) || highVal <= 0) highVal = closeVal;
+                            
+                            let lowVal = Number(d.low);
+                            if (isNaN(lowVal) || lowVal <= 0) lowVal = closeVal;
+                            
+                            // 終極防呆：確保 OHLC 符合圖表套件嚴格邏輯 (避免 API 給的最高價比最低價還低導致當機)
+                            let finalHigh = Math.max(openVal, closeVal, highVal, lowVal);
+                            let finalLow = Math.min(openVal, closeVal, highVal, lowVal);
+
+                            let volVal = Number(d.volume || d.Trading_Volume);
+                            if (isNaN(volVal) || volVal < 0) volVal = 0;
+
                             uniqueChartData.push({ 
                                 time: timeStr, 
-                                open: Number(d.open ?? closeVal), 
-                                high: Number(d.high ?? closeVal), 
-                                low: Number(d.low ?? closeVal), 
+                                open: openVal, 
+                                high: finalHigh, 
+                                low: finalLow, 
                                 close: closeVal, 
-                                volume: Number(d.volume || 0) 
+                                volume: volVal 
                             });
                         }
                     }
                     
-                    // 【強制按日期字串排序】這是 Lightweight Charts 沒報錯但死當的最常見原因
-                    uniqueChartData.sort((a, b) => a.time.localeCompare(b.time));
+                    // 【強制按日期字串排序】防呆：改用嚴格大於小於判斷，避免 localeCompare 在部分瀏覽器作怪導致沒有按順序
+                    uniqueChartData.sort((a, b) => a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
                     this.chartData = uniqueChartData;
 
                     if (this.chartData.length >= 2) {
@@ -754,12 +793,14 @@
                         if (i >= 239) {
                             let sum = 0;
                             for (let j = i - 239; j <= i; j++) sum += uniqueChartData[j].close;
-                            if (!isNaN(sum)) ma240Arr.push({ time: uniqueChartData[i].time, value: sum / 240 });
+                            let avg = sum / 240;
+                            if (!isNaN(avg) && avg > 0) ma240Arr.push({ time: uniqueChartData[i].time, value: avg });
                         }
                         if (i >= 2399) {
                             let sum = 0;
                             for (let j = i - 2399; j <= i; j++) sum += uniqueChartData[j].close;
-                            if (!isNaN(sum)) ma2400Arr.push({ time: uniqueChartData[i].time, value: sum / 2400 });
+                            let avg = sum / 2400;
+                            if (!isNaN(avg) && avg > 0) ma2400Arr.push({ time: uniqueChartData[i].time, value: avg });
                         }
                     }
                     this.ma240Data = ma240Arr;
@@ -1968,5 +2009,3 @@
     </script>
 </body>
 </html>
-
-
