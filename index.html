@@ -117,7 +117,7 @@
                 
                 showChart: false,
                 chartRendered: false,
-                chartInstance: null, // 新增：保存圖表實例以避免重複渲染
+                // 注意：已經將 chartInstance 從這裡移除，避免 Alpine Proxy 破壞圖表引擎
                 chartData: [],
                 ma240Data: [],
                 ma2400Data: [],
@@ -157,6 +157,8 @@
 
                 // --- 圖表控制區 ---
                 toggleChart() {
+                    if (!this.historicalDataLoaded) return; // 確保資料載入後才能展開
+                    
                     this.showChart = !this.showChart;
                     if (this.showChart) {
                         this.$nextTick(() => {
@@ -169,15 +171,18 @@
                     const container = document.getElementById('lwc-chart');
                     if (!container) return;
                     
-                    // 清除舊圖表實例，避免 Alpine 重新渲染時產生多個 Canvas
-                    if (this.chartInstance) {
-                        this.chartInstance.remove();
-                        this.chartInstance = null;
+                    // 清除舊圖表實例，將實例綁定在 window 上避免 Alpine Proxy 攔截報錯
+                    if (window.lwcChartInstance) {
+                        window.lwcChartInstance.remove();
+                        window.lwcChartInstance = null;
                     }
                     container.innerHTML = ''; 
 
+                    // 確保容器有正確寬度
+                    const chartWidth = container.clientWidth || container.getBoundingClientRect().width || 800;
+
                     const chart = LightweightCharts.createChart(container, {
-                        width: container.clientWidth,
+                        width: chartWidth,
                         height: 400,
                         layout: { background: { color: '#ffffff' }, textColor: '#475569' },
                         grid: { vertLines: { color: '#f1f5f9' }, horzLines: { color: '#f1f5f9' } },
@@ -185,7 +190,8 @@
                         timeScale: { borderColor: '#cbd5e1' },
                         crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
                     });
-                    this.chartInstance = chart;
+                    
+                    window.lwcChartInstance = chart;
 
                     const candleSeries = chart.addCandlestickSeries({
                         upColor: '#ef4444', 
@@ -211,35 +217,40 @@
                         scaleMargins: { top: 0.8, bottom: 0 }, 
                     });
                     
-                    // 【關鍵修正】解開 Alpine 的 Proxy 包裝，否則 Lightweight Charts 讀取資料會報錯
+                    // 解開 Alpine 的 Proxy 包裝，否則 Lightweight Charts 讀取資料會報錯
                     const rawChartData = JSON.parse(JSON.stringify(this.chartData));
                     
                     if (rawChartData && rawChartData.length > 0) {
-                        candleSeries.setData(rawChartData);
-                        ma240Series.setData(JSON.parse(JSON.stringify(this.ma240Data)));
-                        ma2400Series.setData(JSON.parse(JSON.stringify(this.ma2400Data)));
-                        
-                        const volumeData = rawChartData.map(d => ({
-                            time: d.time,
-                            value: d.volume,
-                            color: d.close >= d.open ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'
-                        }));
-                        volumeSeries.setData(volumeData);
-                        
-                        // 自動適應畫面範圍
-                        chart.timeScale().fitContent();
+                        try {
+                            candleSeries.setData(rawChartData);
+                            ma240Series.setData(JSON.parse(JSON.stringify(this.ma240Data)));
+                            ma2400Series.setData(JSON.parse(JSON.stringify(this.ma2400Data)));
+                            
+                            const volumeData = rawChartData.map(d => ({
+                                time: d.time,
+                                value: d.volume,
+                                color: d.close >= d.open ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'
+                            }));
+                            volumeSeries.setData(volumeData);
+                            
+                            // 自動適應畫面範圍
+                            chart.timeScale().fitContent();
+                        } catch (err) {
+                            console.error("圖表資料繪製失敗:", err);
+                        }
                     }
 
                     this.chartRendered = true;
 
-                    // 綁定 RWD 視窗縮放
-                    const resizeHandler = () => {
-                        if (container && this.chartInstance) {
-                            this.chartInstance.resize(container.clientWidth, 400);
+                    // 綁定 ResizeObserver 來處理 RWD 視窗縮放，比單純 window resize 更穩
+                    const resizeObserver = new ResizeObserver(entries => {
+                        if (entries.length === 0 || entries[0].target !== container) return;
+                        const newRect = entries[0].contentRect;
+                        if (window.lwcChartInstance) {
+                            window.lwcChartInstance.applyOptions({ width: newRect.width });
                         }
-                    };
-                    window.removeEventListener('resize', resizeHandler);
-                    window.addEventListener('resize', resizeHandler);
+                    });
+                    resizeObserver.observe(container);
                 },
                 // -----------------
 
@@ -646,15 +657,16 @@
                         let t = new Date(d.time);
                         let timeStr = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
                         
-                        // 確保資料唯一性且不會傳入 null 給圖表套件
-                        if (!seen.has(timeStr) && d.close !== undefined && d.close !== null) {
+                        let closeVal = Number(d.close);
+                        // 確保資料唯一性且排除無效數值 (例如國定假日空資料)
+                        if (!seen.has(timeStr) && !isNaN(closeVal) && closeVal > 0) {
                             seen.add(timeStr);
                             uniqueChartData.push({ 
                                 time: timeStr, 
-                                open: Number(d.open ?? d.close), 
-                                high: Number(d.high ?? d.close), 
-                                low: Number(d.low ?? d.close), 
-                                close: Number(d.close), 
+                                open: Number(d.open ?? closeVal), 
+                                high: Number(d.high ?? closeVal), 
+                                low: Number(d.low ?? closeVal), 
+                                close: closeVal, 
                                 volume: Number(d.volume || 0) 
                             });
                         }
@@ -673,12 +685,12 @@
                         if (i >= 239) {
                             let sum = 0;
                             for (let j = i - 239; j <= i; j++) sum += uniqueChartData[j].close;
-                            ma240Arr.push({ time: uniqueChartData[i].time, value: sum / 240 });
+                            if (!isNaN(sum)) ma240Arr.push({ time: uniqueChartData[i].time, value: sum / 240 });
                         }
                         if (i >= 2399) {
                             let sum = 0;
                             for (let j = i - 2399; j <= i; j++) sum += uniqueChartData[j].close;
-                            ma2400Arr.push({ time: uniqueChartData[i].time, value: sum / 2400 });
+                            if (!isNaN(sum)) ma2400Arr.push({ time: uniqueChartData[i].time, value: sum / 2400 });
                         }
                     }
                     this.ma240Data = ma240Arr;
@@ -1260,14 +1272,15 @@
             </div>
 
             <!-- 折疊式輕量級自繪圖表區塊 -->
-            <button @click="toggleChart()" class="w-full mt-2 mb-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex justify-center items-center gap-2 group">
+            <button @click="toggleChart()" :disabled="!historicalDataLoaded" class="w-full mt-2 mb-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex justify-center items-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed">
                 <i class="fa-solid fa-chart-simple text-blue-500 group-hover:scale-110 transition-transform"></i>
-                <span x-text="showChart ? '收合 0050 長期技術與均線圖' : '📊 展開 0050 長期技術與均線圖'"></span>
+                <span x-show="!historicalDataLoaded">圖表資料載入中...</span>
+                <span x-show="historicalDataLoaded" x-text="showChart ? '收合 0050 長期技術與均線圖' : '📊 展開 0050 長期技術與均線圖'"></span>
             </button>
 
             <div x-show="showChart" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-[-10px]" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="bg-white p-1 sm:p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 w-full relative" x-cloak>
                 <div class="text-xs font-bold text-slate-500 mb-2 pl-2"><i class="fa-solid fa-lightbulb text-yellow-500"></i> 滑鼠滾輪可縮放，拖曳可平移。您可清楚看見價格與各均線的相對位階。</div>
-                <div id="lwc-chart" style="width: 100%; height: 400px;" class="rounded-lg overflow-hidden border border-slate-100"></div>
+                <div id="lwc-chart" style="width: 100%; height: 400px;" class="rounded-lg overflow-hidden border border-slate-100 relative"></div>
                 <div class="mt-4 pb-2 flex flex-wrap gap-4 justify-center text-xs font-medium text-slate-600">
                     <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#f59e0b] rounded"></div> 年線 (MA240)</span>
                     <span class="flex items-center gap-1.5"><div class="w-3 h-1 bg-[#a855f7] rounded"></div> 十年線 (MA2400)</span>
@@ -1911,3 +1924,4 @@
     </script>
 </body>
 </html>
+
