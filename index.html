@@ -10,22 +10,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="0050投資建議">
     <link rel="apple-touch-icon" href="./icon.png">
+    
+    <!-- PWA Manifest -->
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind 設定優化 (移除了冗餘的 try-catch，直接在載入前設定) -->
     <script>
-        try {
-            if (typeof tailwind !== 'undefined') {
-                tailwind.config = {
-                    theme: { extend: { colors: { primary: '#1e3a8a', secondary: '#3b82f6', background: '#f8fafc' } } }
-                }
+        window.tailwind = {
+            config: {
+                theme: { extend: { colors: { primary: '#1e3a8a', secondary: '#3b82f6', background: '#f8fafc' } } }
             }
-        } catch (e) {
-            console.warn("Tailwind 設定載入延遲", e);
-        }
+        };
     </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
     
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- 引入 TradingView Lightweight Charts -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 
@@ -76,6 +75,13 @@
                 msgBoxText: '',
                 reloadOnClose: false,
 
+                // PWA 相關狀態
+                deferredPrompt: null,
+                showInstallBtn: false,
+                isIOS: false,
+                isStandalone: false,
+                showIOSInstallDialog: false,
+
                 cond_k: false,        
                 cond_ma240: false,    
                 cond_ma120: false,    
@@ -108,9 +114,6 @@
                 newLogs: [],
                 showUpdateReminder: false,
 
-                deferredPrompt: null,
-                showInstallBtn: false,
-
                 targetMonthlyExpense: 50000,
                 
                 showChart: false,
@@ -125,7 +128,23 @@
                 lastBackupTime: null,
 
                 init() {
-                    // 讀取最後備份時間
+                    // PWA 偵測邏輯
+                    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                    this.isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+                    // 若未安裝 (非 standalone 模式) 且不是在 iframe 中
+                    if (!this.isStandalone && window.self === window.top) {
+                        if (this.isIOS) {
+                            this.showInstallBtn = true; // iOS 無法監聽事件，直接顯示按鈕
+                        } else {
+                            window.addEventListener('beforeinstallprompt', (e) => {
+                                e.preventDefault();
+                                this.deferredPrompt = e;
+                                this.showInstallBtn = true;
+                            });
+                        }
+                    }
+
                     this.lastBackupTime = localStorage.getItem('THH0050_LastBackupTime') || null;
 
                     this.loadData();
@@ -138,12 +157,6 @@
                     
                     this.fetchDataAndProcess().then(() => {
                         this.checkReminder();
-                    });
-
-                    window.addEventListener('beforeinstallprompt', (e) => {
-                        e.preventDefault();
-                        this.deferredPrompt = e;
-                        this.showInstallBtn = true;
                     });
 
                     this.$watch('baseShares', () => this.saveData());
@@ -160,6 +173,26 @@
                     this.$watch('investmentPlans', () => this.saveData(), { deep: true });
                     this.$watch('transactions', () => this.saveData(), { deep: true });
                     this.$watch('targetMonthlyExpense', () => this.saveData());
+                },
+
+                // PWA 安裝觸發功能
+                async installApp() {
+                    if (this.isIOS && !this.isStandalone) {
+                        // 顯示 iOS 專屬安裝教學彈窗
+                        this.showIOSInstallDialog = true;
+                        return;
+                    }
+
+                    if (this.deferredPrompt) {
+                        this.deferredPrompt.prompt();
+                        const { outcome } = await this.deferredPrompt.userChoice;
+                        if (outcome === 'accepted') {
+                            this.showInstallBtn = false;
+                        }
+                        this.deferredPrompt = null;
+                    } else {
+                        alert("您的裝置已安裝此應用，或瀏覽器不支援自動安裝。");
+                    }
                 },
 
                 // --- 輔助共用函式區塊 ---
@@ -560,19 +593,6 @@
                     this.lastRemindedMonth = `${today.getFullYear()}-${today.getMonth()}`;
                     this.showUpdateReminder = false;
                     this.saveData();
-                },
-
-                async installApp() {
-                    if (this.deferredPrompt) {
-                        this.deferredPrompt.prompt();
-                        const { outcome } = await this.deferredPrompt.userChoice;
-                        if (outcome === 'accepted') {
-                            this.showInstallBtn = false;
-                        }
-                        this.deferredPrompt = null;
-                    } else {
-                        alert("您的裝置或瀏覽器目前不支援自動安裝，或是您已經安裝過了。\niOS 用戶請點擊瀏覽器分享按鈕後，選擇「加入主畫面」。");
-                    }
                 },
 
                 async refreshPrice() {
@@ -1247,10 +1267,36 @@
 
     <div x-data="investmentApp" x-cloak class="max-w-4xl mx-auto px-4 sm:px-6">
         
+        <!-- 通用訊息彈窗 -->
         <div x-show="showMsgBox" class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" x-transition x-cloak>
             <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center border border-slate-200">
                 <div class="text-lg font-bold text-slate-800 mb-6 whitespace-pre-line" x-text="msgBoxText"></div>
                 <button @click="closeMsgBox()" class="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-blue-800 transition">確定</button>
+            </div>
+        </div>
+
+        <!-- iOS 安裝教學彈窗 -->
+        <div x-show="showIOSInstallDialog" class="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/60 backdrop-blur-sm pb-10 px-4" x-transition x-cloak @click.self="showIOSInstallDialog = false">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 relative">
+                <button @click="showIOSInstallDialog = false" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+                <div class="text-center mb-6 mt-2">
+                    <div class="w-16 h-16 bg-blue-100 text-blue-500 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-4 shadow-sm">
+                        <i class="fa-brands fa-apple"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800">安裝至 iPhone/iPad</h3>
+                    <p class="text-sm text-slate-500 mt-2">將此系統加入主畫面，享受全螢幕的 APP 體驗，且修改單檔自動更新！</p>
+                </div>
+                <div class="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div class="flex items-center gap-3 text-slate-700">
+                        <div class="w-8 h-8 rounded-full bg-white border shadow-sm flex flex-shrink-0 items-center justify-center font-bold">1</div>
+                        <p class="text-sm">點擊 Safari 瀏覽器正下方的 <span class="inline-flex items-center justify-center w-6 h-6 bg-white border rounded shadow-sm mx-1 text-blue-500"><i class="fa-solid fa-arrow-up-from-bracket text-xs"></i></span> 分享按鈕</p>
+                    </div>
+                    <div class="flex items-center gap-3 text-slate-700">
+                        <div class="w-8 h-8 rounded-full bg-white border shadow-sm flex flex-shrink-0 items-center justify-center font-bold">2</div>
+                        <p class="text-sm">在選單中往下滑，選擇 <span class="font-bold bg-white px-2 py-1 rounded border shadow-sm mx-1">加入主畫面 <i class="fa-solid fa-square-plus text-slate-400 ml-1"></i></span></p>
+                    </div>
+                </div>
+                <button @click="showIOSInstallDialog = false" class="w-full py-3 mt-6 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-700 transition">我了解了</button>
             </div>
         </div>
 
@@ -1334,6 +1380,7 @@
                     <i class="fa-solid fa-gear mr-2"></i>系統設定
                 </button>
                 <div class="ml-auto flex items-center pl-2 pr-2 gap-2">
+                    <!-- 隱藏條件已整合在 showInstallBtn 邏輯中 -->
                     <button x-show="showInstallBtn" @click="installApp" class="hidden sm:inline-flex items-center justify-center px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 font-bold text-sm transition shadow-sm border border-green-200" x-cloak>
                         <i class="fa-solid fa-download mr-2"></i>安裝 APP
                     </button>
@@ -1364,33 +1411,46 @@
                 </div>
             </div>
 
+            <!-- 主控台上方四格儀表板 (已針對大中小字體與總市值進行版面調整優化) -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-2">
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-xs font-medium text-slate-500 mb-1">現有庫存 (股) <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
-                    <div class="text-2xl font-bold text-slate-800" x-text="currentTotalShares > 0 ? formatMoney(currentTotalShares) : '-'"></div>
+                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                    <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">現有庫存 (股) <span class="text-xs text-slate-400 font-normal">[精算]</span></div>
+                    <div class="text-2xl sm:text-3xl font-bold text-slate-800 whitespace-nowrap" x-text="currentTotalShares > 0 ? formatMoney(currentTotalShares) : '-'"></div>
                 </div>
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-xs font-medium text-slate-500 mb-1">平均成本 (元) <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
-                    <div class="text-2xl font-bold text-slate-800" x-text="currentAvgCost > 0 ? currentAvgCost : '-'"></div>
+                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                    <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">平均成本 (元) <span class="text-xs text-slate-400 font-normal">[精算]</span></div>
+                    <div class="text-2xl sm:text-3xl font-bold text-slate-800 whitespace-nowrap" x-text="currentAvgCost > 0 ? currentAvgCost : '-'"></div>
                 </div>
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-xs font-medium text-slate-500 mb-1">總投入本金 <span class="text-[10px] text-slate-400 font-normal">[精算]</span></div>
-                    <div class="text-xl sm:text-2xl font-bold text-slate-800" x-text="currentTotalCost > 0 ? formatMoney(currentTotalCost) + ' 元' : '-'"></div>
+                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                    <div class="mb-2 sm:mb-3">
+                        <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">總投入本金 <span class="text-xs text-slate-400 font-normal">[精算]</span></div>
+                        <div class="text-2xl sm:text-3xl font-bold text-slate-800 whitespace-nowrap" x-text="currentTotalCost > 0 ? formatMoney(currentTotalCost) + ' 元' : '-'"></div>
+                    </div>
+                    <div class="pt-2 sm:pt-3 border-t border-slate-100">
+                        <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">持股總市值 <span class="text-xs text-slate-400 font-normal">[即時]</span></div>
+                        <div class="text-2xl sm:text-3xl font-bold text-blue-700 whitespace-nowrap" x-text="marketValueNum > 0 ? formatMoney(marketValueNum) + ' 元' : '-'"></div>
+                    </div>
                 </div>
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-xs font-medium text-slate-500 mb-1">累積總損益 <span class="text-[10px] text-slate-400 font-normal">[含配息與已實現]</span></div>
-                    <div class="text-xl sm:text-2xl font-black flex flex-col gap-1">
-                        <div :class="profit >= 0 ? 'text-red-500' : 'text-green-500'" class="flex items-baseline gap-1">
-                            <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
-                            <span class="text-sm font-normal text-slate-500">元</span>
+                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-medium text-slate-500 mb-1 leading-tight">
+                            <span class="whitespace-nowrap">累積總損益</span>
+                            <!-- 允許斷行設定：利用 block 或 sm:inline 保留跨裝置彈性 -->
+                            <span class="text-xs text-slate-400 font-normal block sm:inline mt-1 sm:mt-0">[含配息與已實現]</span>
                         </div>
-                        <div class="text-[11px] sm:text-xs text-slate-600 font-normal space-y-1 mt-0.5" x-show="roi !== null || annualizedROI !== null">
-                            <div class="flex items-center gap-1" x-show="roi !== null">
-                                <i class="fa-solid fa-scale-unbalanced text-slate-400 w-3"></i> 累積報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
+                        <div class="text-2xl sm:text-3xl font-black flex flex-col gap-1 mt-1 sm:mt-0">
+                            <div :class="profit >= 0 ? 'text-red-500' : 'text-green-500'" class="flex items-baseline gap-1 whitespace-nowrap">
+                                <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
+                                <span class="text-base sm:text-lg font-normal text-slate-500">元</span>
                             </div>
-                            <div class="flex items-center gap-1" x-show="annualizedROI !== null">
-                                <i class="fa-solid fa-chart-line text-slate-400 w-3"></i> XIRR(年化): <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
-                            </div>
+                        </div>
+                    </div>
+                    <div class="text-xs sm:text-sm text-slate-600 font-normal space-y-1.5 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-slate-100" x-show="roi !== null || annualizedROI !== null">
+                        <div class="flex items-center gap-1.5 whitespace-nowrap" x-show="roi !== null">
+                            <i class="fa-solid fa-scale-unbalanced text-slate-400 w-4 text-center"></i> 累積報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
+                        </div>
+                        <div class="flex items-center gap-1.5 whitespace-nowrap" x-show="annualizedROI !== null">
+                            <i class="fa-solid fa-chart-line text-slate-400 w-4 text-center"></i> XIRR(年化): <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
                         </div>
                     </div>
                 </div>
@@ -2039,18 +2099,23 @@
 
     </div>
 
+    <!-- PWA Service Worker (單檔無快取自動更新版) -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                const sw = `
-                    self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
-                    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-                    self.addEventListener('fetch', e => {});
+                // 這個輕量版 SW 僅用於滿足 PWA 安裝條件。
+                // 由於它不攔截(fetch)及快取 html，所以每次開啟 APP 都會透過網路抓取您最新的 index.html
+                const swCode = `
+                    self.addEventListener('install', (e) => { self.skipWaiting(); });
+                    self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
+                    self.addEventListener('fetch', (e) => { });
                 `;
-                const blob = new Blob([sw], { type: 'application/javascript' });
-                navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => {
-                    console.log("備註：如果您是直接打開本機檔案，無法安裝為 APP 是正常現象。請上傳至 GitHub Pages 後即可正常安裝。");
-                });
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                // 使用 scope 確保這個 blob SW 能控制當前目錄
+                navigator.serviceWorker.register(URL.createObjectURL(blob), { scope: './' })
+                    .catch(err => {
+                        console.log("PWA SW 註冊失敗 (如在本地 file:// 開啟屬正常現象):", err);
+                    });
             });
         }
     </script>
