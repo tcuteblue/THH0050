@@ -1413,44 +1413,50 @@
 
             <!-- 主控台上方四格儀表板 (已針對大中小字體與總市值進行版面調整優化) -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-2">
-                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">現有庫存 (股) <span class="text-xs text-slate-400 font-normal">[精算]</span></div>
-                    <div class="text-2xl sm:text-3xl font-bold text-slate-800 whitespace-nowrap" x-text="currentTotalShares > 0 ? formatMoney(currentTotalShares) : '-'"></div>
+                <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                    <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
+                        <span>現有庫存 (股)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[精算]</span>
+                    </div>
+                    <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-slate-800 tracking-tighter break-words" x-text="currentTotalShares > 0 ? formatMoney(currentTotalShares) : '-'"></div>
                 </div>
-                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">平均成本 (元) <span class="text-xs text-slate-400 font-normal">[精算]</span></div>
-                    <div class="text-2xl sm:text-3xl font-bold text-slate-800 whitespace-nowrap" x-text="currentAvgCost > 0 ? currentAvgCost : '-'"></div>
+                <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                    <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
+                        <span>平均成本 (元)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[精算]</span>
+                    </div>
+                    <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-slate-800 tracking-tighter break-words" x-text="currentAvgCost > 0 ? currentAvgCost : '-'"></div>
                 </div>
-                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
                     <div class="mb-2 sm:mb-3">
-                        <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">總投入本金 <span class="text-xs text-slate-400 font-normal">[精算]</span></div>
-                        <div class="text-2xl sm:text-3xl font-bold text-slate-800 whitespace-nowrap" x-text="currentTotalCost > 0 ? formatMoney(currentTotalCost) + ' 元' : '-'"></div>
+                        <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
+                            <span>總投入本金 (元)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[精算]</span>
+                        </div>
+                        <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-slate-800 tracking-tighter break-words" x-text="currentTotalCost > 0 ? formatMoney(currentTotalCost) : '-'"></div>
                     </div>
                     <div class="pt-2 sm:pt-3 border-t border-slate-100">
-                        <div class="text-sm font-medium text-slate-500 mb-1 whitespace-nowrap">持股總市值 <span class="text-xs text-slate-400 font-normal">[即時]</span></div>
-                        <div class="text-2xl sm:text-3xl font-bold text-blue-700 whitespace-nowrap" x-text="marketValueNum > 0 ? formatMoney(marketValueNum) + ' 元' : '-'"></div>
+                        <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
+                            <span>持股總市值 (元)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[即時]</span>
+                        </div>
+                        <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-blue-700 tracking-tighter break-words" x-text="marketValueNum > 0 ? formatMoney(marketValueNum) : '-'"></div>
                     </div>
                 </div>
-                <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
                     <div>
-                        <div class="text-sm font-medium text-slate-500 mb-1 leading-tight">
-                            <span class="whitespace-nowrap">累積總損益</span>
-                            <!-- 允許斷行設定：利用 block 或 sm:inline 保留跨裝置彈性 -->
-                            <span class="text-xs text-slate-400 font-normal block sm:inline mt-1 sm:mt-0">[含配息與已實現]</span>
+                        <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 leading-tight flex flex-wrap gap-1 items-center">
+                            <span>累積總損益 (元)</span>
+                            <span class="text-[10px] sm:text-xs text-slate-400 font-normal">[含配息已實現]</span>
                         </div>
-                        <div class="text-2xl sm:text-3xl font-black flex flex-col gap-1 mt-1 sm:mt-0">
-                            <div :class="profit >= 0 ? 'text-red-500' : 'text-green-500'" class="flex items-baseline gap-1 whitespace-nowrap">
+                        <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-black mt-1 sm:mt-0 tracking-tighter break-words">
+                            <div :class="profit >= 0 ? 'text-red-500' : 'text-green-500'">
                                 <span x-text="profit > 0 ? '+' + formatMoney(profit) : formatMoney(profit)"></span>
-                                <span class="text-base sm:text-lg font-normal text-slate-500">元</span>
                             </div>
                         </div>
                     </div>
                     <div class="text-xs sm:text-sm text-slate-600 font-normal space-y-1.5 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-slate-100" x-show="roi !== null || annualizedROI !== null">
-                        <div class="flex items-center gap-1.5 whitespace-nowrap" x-show="roi !== null">
-                            <i class="fa-solid fa-scale-unbalanced text-slate-400 w-4 text-center"></i> 累積報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
+                        <div class="flex items-center gap-1 flex-wrap" x-show="roi !== null">
+                            <i class="fa-solid fa-scale-unbalanced text-slate-400 w-4 text-center"></i> 累積報酬: <span class="font-bold tracking-tight" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
                         </div>
-                        <div class="flex items-center gap-1.5 whitespace-nowrap" x-show="annualizedROI !== null">
-                            <i class="fa-solid fa-chart-line text-slate-400 w-4 text-center"></i> 年化複利報酬: <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
+                        <div class="flex items-center gap-1 flex-wrap" x-show="annualizedROI !== null">
+                            <i class="fa-solid fa-chart-line text-slate-400 w-4 text-center"></i> 年化複利: <span class="font-bold tracking-tight" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
                         </div>
                     </div>
                 </div>
@@ -1767,7 +1773,7 @@
                                 <div class="p-3 bg-white rounded-lg border border-slate-200 shadow-sm">
                                     <div class="text-sm font-bold mb-1">💡 目前市場狀態：</div>
                                     <p class="text-sm text-slate-700" x-show="marginBalance !== null && marginBalance !== 'API阻擋' && marginBalance !== '無資料'">目前大盤融資餘額為 <span class="font-bold text-cyan-600" x-text="marginBalance"></span>。</p>
-                                    <p class="text-sm text-red-500" x-show="marginBalance === 'API阻擋' || marginBalance === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 自動抓取失敗 (網路連線或API阻擋)，請手動確認。</p>
+                                    <p class="text-sm text-red-500" x-show="marginBalance === 'API阻擋' || marginBalance === '無資料'"><i class="fa-solid fa-triangle-exclamation mr-1"></i> 自動抓取失敗 (網路連線或API阻擋)，請手 manual確認。</p>
                                     <p class="text-sm text-slate-500" x-show="marginBalance === null"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 嘗試由證交所讀取中...</p>
                                 </div>
 
