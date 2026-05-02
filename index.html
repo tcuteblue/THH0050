@@ -459,7 +459,7 @@
                     this.saveData();
                     
                     if (executedAction !== 'sync') {
-                        this.msgBoxText = '✅ 交易已成功存入歷史明細！\nXIRR 年化報酬率與均價已為您重新精算。';
+                        this.msgBoxText = '✅ 交易已成功存入歷史明細！\n年化複利報酬率與均價已為您重新精算。';
                         this.showMsgBox = true;
                     }
 
@@ -1450,7 +1450,7 @@
                             <i class="fa-solid fa-scale-unbalanced text-slate-400 w-4 text-center"></i> 累積報酬率: <span class="font-bold" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
                         </div>
                         <div class="flex items-center gap-1.5 whitespace-nowrap" x-show="annualizedROI !== null">
-                            <i class="fa-solid fa-chart-line text-slate-400 w-4 text-center"></i> XIRR(年化): <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
+                            <i class="fa-solid fa-chart-line text-slate-400 w-4 text-center"></i> 年化複利報酬: <span class="font-bold" :class="parseFloat(annualizedROI) >= 0 ? 'text-red-500' : 'text-green-500'" x-text="isNaN(annualizedROI) ? annualizedROI : annualizedROI + '%'"></span>
                         </div>
                     </div>
                 </div>
@@ -1996,11 +1996,11 @@
 
                     <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
                         <h3 class="font-bold text-slate-700 mb-4 text-sm flex items-center justify-between">
-                            <span><i class="fa-solid fa-list-ul mr-2 text-blue-600"></i>第四步：歷史交易明細管理 (XIRR 專用)</span>
+                            <span><i class="fa-solid fa-list-ul mr-2 text-blue-600"></i>第四步：歷史交易明細管理 (精算年化報酬專用)</span>
                             <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-md font-bold shadow-sm">進階精算</span>
                         </h3>
                         <p class="text-xs text-slate-500 mb-4">
-                            系統的自動定期定額與單筆紀錄都會顯示在此。您可以點擊「新增一筆交易」來補足過去不同金額的扣款紀錄。這些完整紀錄是計算精確 XIRR 的核心資料。
+                            系統的自動定期定額與單筆紀錄都會顯示在此。您可以點擊「新增一筆交易」來補足過去不同金額的扣款紀錄。這些完整紀錄是計算精確「年化複利報酬率 (XIRR)」的核心資料。
                         </p>
                         
                         <div id="txnList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
@@ -2121,3 +2121,5 @@
     </script>
 </body>
 </html>
+
+
