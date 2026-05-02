@@ -29,7 +29,10 @@
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 
     <style>
-        html { font-size: 20px; }
+        /* 基礎字體縮放：透過調高根目錄字級，讓所有 Tailwind 單位 (rem) 同步完美等比例放大 */
+        html { font-size: 23px; }
+        @media (max-width: 639px) { html { font-size: 21px; } } /* 手機端避免過度擁擠微調 */
+
         input[type="text"], input[type="number"], input[type="date"], select { font-size: 1rem; }
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -1414,36 +1417,36 @@
             <!-- 主控台上方四格儀表板 (已針對大中小字體與總市值進行版面調整優化) -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-2">
                 <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
-                        <span>現有庫存 (股)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[精算]</span>
+                    <div class="text-sm sm:text-base font-bold text-slate-600 mb-1 flex flex-wrap gap-1 items-baseline">
+                        <span>現有庫存 (股)</span><span class="text-xs sm:text-sm text-slate-400 font-medium">[精算]</span>
                     </div>
                     <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-slate-800 tracking-tighter break-words" x-text="currentTotalShares > 0 ? formatMoney(currentTotalShares) : '-'"></div>
                 </div>
                 <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-                    <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
-                        <span>平均成本 (元)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[精算]</span>
+                    <div class="text-sm sm:text-base font-bold text-slate-600 mb-1 flex flex-wrap gap-1 items-baseline">
+                        <span>平均成本 (元)</span><span class="text-xs sm:text-sm text-slate-400 font-medium">[精算]</span>
                     </div>
                     <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-slate-800 tracking-tighter break-words" x-text="currentAvgCost > 0 ? currentAvgCost : '-'"></div>
                 </div>
                 <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
                     <div class="mb-2 sm:mb-3">
-                        <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
-                            <span>總投入本金 (元)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[精算]</span>
+                        <div class="text-sm sm:text-base font-bold text-slate-600 mb-1 flex flex-wrap gap-1 items-baseline">
+                            <span>總投入本金 (元)</span><span class="text-xs sm:text-sm text-slate-400 font-medium">[精算]</span>
                         </div>
                         <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-slate-800 tracking-tighter break-words" x-text="currentTotalCost > 0 ? formatMoney(currentTotalCost) : '-'"></div>
                     </div>
                     <div class="pt-2 sm:pt-3 border-t border-slate-100">
-                        <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 flex flex-wrap gap-1 items-center">
-                            <span>持股總市值 (元)</span><span class="text-[10px] sm:text-xs text-slate-400 font-normal">[即時]</span>
+                        <div class="text-sm sm:text-base font-bold text-slate-600 mb-1 flex flex-wrap gap-1 items-baseline">
+                            <span>持股總市值 (元)</span><span class="text-xs sm:text-sm text-slate-400 font-medium">[即時]</span>
                         </div>
                         <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold text-blue-700 tracking-tighter break-words" x-text="marketValueNum > 0 ? formatMoney(marketValueNum) : '-'"></div>
                     </div>
                 </div>
                 <div class="bg-white p-3 sm:p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
                     <div>
-                        <div class="text-xs sm:text-sm font-medium text-slate-500 mb-1 leading-tight flex flex-wrap gap-1 items-center">
+                        <div class="text-sm sm:text-base font-bold text-slate-600 mb-1 leading-tight flex flex-wrap gap-1 items-baseline">
                             <span>累積總損益 (元)</span>
-                            <span class="text-[10px] sm:text-xs text-slate-400 font-normal">[含配息已實現]</span>
+                            <span class="text-xs sm:text-sm text-slate-400 font-medium">[含配息已實現]</span>
                         </div>
                         <div class="text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-black mt-1 sm:mt-0 tracking-tighter break-words">
                             <div :class="profit >= 0 ? 'text-red-500' : 'text-green-500'">
@@ -1451,7 +1454,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="text-xs sm:text-sm text-slate-600 font-normal space-y-1.5 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-slate-100" x-show="roi !== null || annualizedROI !== null">
+                    <div class="text-sm sm:text-base text-slate-600 font-normal space-y-1.5 mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-slate-100" x-show="roi !== null || annualizedROI !== null">
                         <div class="flex items-center gap-1 flex-wrap" x-show="roi !== null">
                             <i class="fa-solid fa-scale-unbalanced text-slate-400 w-4 text-center"></i> 累積報酬: <span class="font-bold tracking-tight" :class="roi >= 0 ? 'text-red-500' : 'text-green-500'" x-text="roi + '%'"></span>
                         </div>
