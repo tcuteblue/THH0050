@@ -10,8 +10,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="0050 筆記">
     <link rel="apple-touch-icon" href="./icon.png">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%E7%AD%86%E8%A8%98%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
-    <!-- Tailwind CSS -->
+    <!-- Tailwind -->
     <script>
         window.tailwind = {
             config: {
@@ -21,10 +24,11 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- FontAwesome & Alpine.js -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
+    <!-- Alpine.js -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
     <!-- TradingView Lightweight Charts -->
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 
@@ -32,21 +36,19 @@
         html { font-size: 16px; }
         @media (max-width: 639px) { html { font-size: 15px; } }
         body { -webkit-tap-highlight-color: transparent; }
-        
+
         input[type="text"], input[type="number"], input[type="date"], select { font-size: 1rem; }
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        
         [x-cloak] { display: none !important; }
-        
         .tab-btn.active { border-bottom: 2px solid #3b82f6; color: #1e3a8a; font-weight: bold; }
         
-        /* Custom Scrollbar */
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
+
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased" x-data="investmentApp">
 
@@ -55,6 +57,7 @@
         <div class="max-w-5xl mx-auto px-4 py-3 sm:py-4">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
+                    <!-- 移除括號副標題，保持簡潔 -->
                     <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-800">蔡宏和製作</h1>
                     <div class="text-xs text-slate-500 mt-1 flex items-center gap-2">
                         <i class="fa-solid fa-clock"></i> 即時報價更新時間: <span x-text="priceUpdateTime"></span>
@@ -69,7 +72,7 @@
                         </div>
                     </div>
 
-                    <!-- 狀態標籤 (固定高度與一致字體大小) -->
+                    <!-- 狀態標籤統一高度與字體 -->
                     <div class="flex flex-col gap-1.5 justify-center">
                         <span class="inline-flex items-center justify-center rounded font-medium text-white shadow-sm h-[26px] px-2 text-[13px]"
                               :class="{
@@ -315,7 +318,7 @@
                                             <input type="date" x-model="txn.date" @change="saveData()" class="w-full bg-transparent border-0 border-b border-slate-200 focus:border-blue-500 focus:ring-0 text-sm p-1">
                                         </div>
                                         
-                                        <!-- 動作選擇 -->
+                                        <!-- 動作選擇 (加上 Emoji) -->
                                         <div class="col-span-1">
                                             <select x-model="txn.action" @change="saveData()" class="w-full bg-slate-100 border-0 rounded text-sm p-1.5 focus:ring-2 focus:ring-blue-500 font-medium"
                                                 :class="{
@@ -359,6 +362,7 @@
                                     </div>
                                     
                                     <!-- 右側獨立刪除按鈕 (防呆與防重疊) -->
+                                    <!-- ★修改點：加入防呆對話框呼叫 confirmRemoveTransaction -->
                                     <button @click="confirmRemoveTransaction(txn.id)" class="shrink-0 w-[40px] h-[40px] ml-2 bg-red-50 text-red-500 rounded-lg border border-red-200 hover:bg-red-100 transition-colors flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-red-500" title="刪除此筆">
                                         <i class="fa-solid fa-trash-can text-[16px]"></i>
                                     </button>
@@ -440,14 +444,14 @@
             </div>
             <h3 class="text-lg font-bold text-slate-900 mb-2">系統通知</h3>
             <p class="text-slate-600 mb-6 whitespace-pre-line text-sm leading-relaxed" x-text="msgBoxText"></p>
-            <!-- 修復按鈕樣式：加入明確的藍色背景與白色文字 -->
+            <!-- ★修改點：將原先白底按鈕改為藍底白字，確保清晰可見 -->
             <button @click="closeMsgBox()" class="w-full inline-flex justify-center rounded-xl px-4 py-3 bg-blue-600 text-base font-bold text-white shadow-sm hover:bg-blue-700 focus:outline-none transition-colors">
                 確定
             </button>
         </div>
     </div>
 
-    <!-- Confirm Box Modal (防呆刪除機制) -->
+    <!-- ★新增點：Confirm Box Modal (防呆刪除確認機制) -->
     <div x-show="showConfirmBox" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" x-cloak>
         <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 transform transition-all text-center border border-slate-100">
             <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
@@ -505,9 +509,11 @@
         </div>
     </div>
 
+    <!-- Alpine 腳本：保持原本清晰分明的排版格式 -->
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('investmentApp', () => ({
+                
                 activeTab: 'dashboard', 
 
                 baseShares: 0,          
@@ -525,12 +531,11 @@
                 manualPrice: null,
                 manualAmount: null,      
 
-                // System MessageBox System
                 showMsgBox: false,
                 msgBoxText: '',
                 reloadOnClose: false,
 
-                // Confirm Box System
+                // ★新增點：防呆確認框變數
                 showConfirmBox: false,
                 confirmBoxText: '',
                 confirmActionCallback: null,
@@ -648,7 +653,9 @@
                             this.isBlueLight = data.isBlueLight || false;
                             this.isPanic = data.isPanic || false;
                             this.targetMonthlyExpense = data.targetMonthlyExpense || 50000;
-                        } catch(e) { console.error("資料載入失敗", e); }
+                        } catch(e) {
+                            console.error("資料載入失敗", e);
+                        }
                     }
                 },
 
@@ -700,8 +707,12 @@
                 _getBackupTimestamp() {
                     const now = new Date();
                     const pad = (n) => String(n).padStart(2, '0');
-                    const yyyy = now.getFullYear(), mm = pad(now.getMonth() + 1), dd = pad(now.getDate());
-                    const hh = pad(now.getHours()), min = pad(now.getMinutes()), ss = pad(now.getSeconds());
+                    const yyyy = now.getFullYear();
+                    const mm = pad(now.getMonth() + 1);
+                    const dd = pad(now.getDate());
+                    const hh = pad(now.getHours());
+                    const min = pad(now.getMinutes());
+                    const ss = pad(now.getSeconds());
                     return {
                         file: `${yyyy}${mm}${dd}_${hh}${min}${ss}`,
                         display: `${yyyy}/${mm}/${dd} ${hh}:${min}:${ss}`
@@ -823,8 +834,11 @@
                         window.lwcChartInstance = chart;
 
                         const candleSeries = chart.addCandlestickSeries({
-                            upColor: '#ef4444', downColor: '#22c55e', borderVisible: false,
-                            wickUpColor: '#ef4444', wickDownColor: '#22c55e'
+                            upColor: '#ef4444', 
+                            downColor: '#22c55e', 
+                            borderVisible: false,
+                            wickUpColor: '#ef4444', 
+                            wickDownColor: '#22c55e'
                         });
 
                         const ma240Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 2, title: '年線', crosshairMarkerVisible: false });
@@ -835,13 +849,25 @@
                         
                         let rawChartData = JSON.parse(JSON.stringify(this.chartData));
                         if (rawChartData && rawChartData.length > 0) {
-                            candleSeries.setData(rawChartData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })));
+                            const cleanCandles = rawChartData.map(d => ({
+                                time: d.time,
+                                open: d.open,
+                                high: d.high,
+                                low: d.low,
+                                close: d.close
+                            }));
+                            candleSeries.setData(cleanCandles);
+                            
                             ma240Series.setData(JSON.parse(JSON.stringify(this.ma240Data)));
                             ma2400Series.setData(JSON.parse(JSON.stringify(this.ma2400Data)));
-                            volumeSeries.setData(rawChartData.map(d => ({
-                                time: d.time, value: d.volume,
+                            
+                            const volumeData = rawChartData.map(d => ({
+                                time: d.time,
+                                value: d.volume,
                                 color: d.close >= d.open ? 'rgba(239, 68, 68, 0.4)' : 'rgba(34, 197, 94, 0.4)'
-                            })));
+                            }));
+                            volumeSeries.setData(volumeData);
+                            
                             chart.timeScale().fitContent();
                         }
                         
@@ -850,8 +876,9 @@
                         if (window.ResizeObserver) {
                             const resizeObserver = new ResizeObserver(entries => {
                                 if (entries.length === 0 || entries[0].target !== container) return;
-                                if (window.lwcChartInstance && entries[0].contentRect.width > 0) {
-                                    window.lwcChartInstance.applyOptions({ width: Math.floor(entries[0].contentRect.width) });
+                                const newRect = entries[0].contentRect;
+                                if (window.lwcChartInstance && newRect.width > 0) {
+                                    window.lwcChartInstance.applyOptions({ width: Math.floor(newRect.width) });
                                 }
                             });
                             resizeObserver.observe(container);
@@ -861,53 +888,83 @@
                     }
                 },
 
-                addPlan() { this.investmentPlans.push({ id: Date.now(), day: 15, amount: 10000 }); },
-                removePlan(id) { this.investmentPlans = this.investmentPlans.filter(p => p.id !== id); },
+                addPlan() {
+                    this.investmentPlans.push({ id: Date.now(), day: 15, amount: 10000 });
+                },
+
+                removePlan(id) {
+                    this.investmentPlans = this.investmentPlans.filter(p => p.id !== id);
+                },
 
                 executeManualAdd() {
                     let executedAction = this.manualAction;
 
                     if (this.manualAction === 'dividend') {
                         if (!this.manualAmount || this.manualAmount <= 0 || !this.manualDate) {
-                            this.msgBoxText = '請輸入完整的配息日期與總金額！'; this.showMsgBox = true; return;
+                            this.msgBoxText = '請輸入完整的配息日期與總金額！';
+                            this.showMsgBox = true;
+                            return;
                         }
                         this.transactions.push({
-                            id: Date.now() + Math.random(), date: this.manualDate,
-                            shares: 0, price: 0, amount: Math.floor(this.manualAmount),
-                            type: 'manual', action: 'dividend'
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: 0,
+                            price: 0,
+                            amount: Math.floor(this.manualAmount),
+                            type: 'manual',
+                            action: 'dividend'
                         });
                     } else if (this.manualAction === 'sync') {
                         if (this.manualShares == null || this.manualPrice == null || !this.manualDate) {
-                            this.msgBoxText = '請輸入校正日期的「實際總股數」與「實際平均成本」！'; this.showMsgBox = true; return;
+                            this.msgBoxText = '請輸入校正日期的「實際總股數」與「實際平均成本」！';
+                            this.showMsgBox = true;
+                            return;
                         }
+                        
                         let currentState = this.inventoryState; 
                         let targetShares = Math.floor(this.manualShares); 
                         let targetTotalCost = Math.floor(targetShares * parseFloat(this.manualPrice)); 
+                        
                         let diffShares = targetShares - currentState.shares;
                         let diffAmount = targetTotalCost - currentState.totalCost;
                         
                         this.transactions.push({
-                            id: Date.now() + Math.random(), date: this.manualDate,
-                            shares: diffShares, price: 0, amount: diffAmount,
-                            type: 'manual', action: 'sync'
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: diffShares,
+                            price: 0, 
+                            amount: diffAmount,
+                            type: 'manual',
+                            action: 'sync'
                         });
-                        this.msgBoxText = `✅ 庫存校正已完成！\n系統已補足差額股數：${diffShares} 股\n微調成本差額：${diffAmount} 元`;
+                        
+                        this.msgBoxText = `✅ 庫存校正已完成！\n系統已自動補足差額股數：${diffShares} 股\n自動微調成本差額：${diffAmount} 元`;
                         this.showMsgBox = true;
                     } else {
+                        // 包括 buy, sell, withdraw
                         if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0 || !this.manualDate) {
-                            this.msgBoxText = '請輸入完整的交易日期、單價與股數！'; this.showMsgBox = true; return;
+                            this.msgBoxText = '請輸入完整的交易日期、單價與股數！';
+                            this.showMsgBox = true;
+                            return;
                         }
+                        
                         let finalShares = Math.floor(this.manualShares); 
                         let finalAmount = this.manualAmount !== null ? Math.floor(this.manualAmount) : Math.floor(finalShares * this.manualPrice); 
 
                         this.transactions.push({
-                            id: Date.now() + Math.random(), date: this.manualDate,
-                            shares: finalShares, price: this.manualPrice, amount: finalAmount,
-                            type: 'manual', action: this.manualAction
+                            id: Date.now() + Math.random(),
+                            date: this.manualDate,
+                            shares: finalShares,
+                            price: this.manualPrice,
+                            amount: finalAmount,
+                            type: 'manual',
+                            action: this.manualAction
                         });
                     }
                     
-                    this.manualShares = null; this.manualPrice = null; this.manualAmount = null;
+                    this.manualShares = null;
+                    this.manualPrice = null;
+                    this.manualAmount = null;
                     this.manualDate = new Date().toISOString().split('T')[0];
                     this.manualAction = 'buy';
                     this.saveData();
@@ -916,37 +973,60 @@
                         this.msgBoxText = '✅ 交易已成功存入歷史明細！\n年化複利報酬率與均價已為您重新精算。';
                         this.showMsgBox = true;
                     }
-                    if (executedAction === 'buy' || executedAction === 'sync') this.downloadBackupFile();
+
+                    if (executedAction === 'buy' || executedAction === 'sync') {
+                        this.downloadBackupFile();
+                    }
                 },
 
                 async downloadBackupFile() {
                     if (this.isBackingUp) return;
                     this.isBackingUp = true;
+
                     await new Promise(resolve => setTimeout(resolve, 600));
+
                     try {
                         const savedData = localStorage.getItem('THH0050_Data_V3');
                         if (!savedData) return;
+
                         const ts = this._getBackupTimestamp();
                         this._triggerDownload(`0050投資筆記備份檔_${ts.file}.json`, savedData);
+
                         this.lastBackupTime = ts.display;
                         localStorage.setItem('THH0050_LastBackupTime', this.lastBackupTime);
-                    } catch (error) { console.error("備份失敗:", error); } finally { this.isBackingUp = false; }
+
+                    } catch (error) {
+                        console.error("背景自動備份失敗:", error);
+                    } finally {
+                        this.isBackingUp = false;
+                    }
                 },
 
                 addTransaction() {
                     let defaultDate = new Date().toISOString().split('T')[0];
-                    if (this.transactions.length > 0) defaultDate = this.transactions[this.transactions.length - 1].date;
+                    if (this.transactions && this.transactions.length > 0) {
+                        defaultDate = this.transactions[this.transactions.length - 1].date;
+                    }
+
                     this.transactions.push({
-                        id: Date.now() + Math.random(), date: defaultDate, action: 'buy',
-                        amount: null, shares: null, price: null, type: 'manual'
+                        id: Date.now() + Math.random(),
+                        date: defaultDate,
+                        action: 'buy',
+                        amount: null,
+                        shares: null,
+                        price: null,
+                        type: 'manual'
                     });
+                    
                     this.$nextTick(() => {
                         const list = document.getElementById('txnList');
-                        if (list) list.scrollTop = list.scrollHeight;
+                        if (list) {
+                            list.scrollTop = list.scrollHeight;
+                        }
                     });
                 },
 
-                // 新增防呆刪除呼叫
+                // ★新增點：防呆確認刪除
                 confirmRemoveTransaction(id) {
                     this.confirmBoxText = '您確定要刪除這筆歷史明細嗎？\n刪除後無法復原，總資產與獲利將重新計算。';
                     this.confirmActionCallback = () => {
@@ -956,7 +1036,7 @@
                     this.showConfirmBox = true;
                 },
 
-                // 新增防呆清空呼叫
+                // ★新增點：防呆清空明細
                 confirmClearTransactions() {
                     if (this.transactions.length === 0) return;
                     this.confirmBoxText = '⚠️ 警告！您確定要清空【所有歷史明細】嗎？\n此動作將刪除所有交易紀錄，強烈建議先匯出備份！';
@@ -969,7 +1049,7 @@
                     this.showConfirmBox = true;
                 },
 
-                // 執行確認框的動作
+                // ★新增點：執行防呆確認的動作
                 executeConfirmAction() {
                     if (this.confirmActionCallback) {
                         this.confirmActionCallback();
@@ -980,27 +1060,33 @@
                 exportSystemBackup() {
                     const savedData = localStorage.getItem('THH0050_Data_V3');
                     if (!savedData) {
-                        this.msgBoxText = '目前沒有資料可以備份！'; this.showMsgBox = true; return;
+                        this.msgBoxText = '目前沒有資料可以備份！';
+                        this.showMsgBox = true;
+                        return;
                     }
                     const ts = this._getBackupTimestamp();
                     this._triggerDownload(`0050投資筆記備份檔_${ts.file}.json`, savedData);
-                    this.msgBoxText = '✅ 系統備份檔 (.json) 已下載！\n強烈建議將此檔案存入 Google 雲端硬碟。未來只要匯入此檔案，所有設定皆可瞬間還原。';
+
+                    this.msgBoxText = '✅ 系統備份檔 (.json) 已下載！\n強烈建議將此檔案存入 Google 雲端硬碟。未來只要匯入此檔案，所有設定與紀錄皆可瞬間還原。';
                     this.showMsgBox = true;
                 },
 
                 importSystemBackup(event) {
                     const file = event.target.files[0];
                     if (!file) return;
+                    
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         try {
                             const data = JSON.parse(e.target.result);
-                            if (data && (data.transactions !== undefined || data.baseShares !== undefined)) {
+                            if (data && (data.transactions !== undefined || data.baseShares !== undefined || data.shares !== undefined)) {
                                 localStorage.setItem('THH0050_Data_V3', JSON.stringify(data));
                                 this.msgBoxText = '✅ 系統資料已成功還原！\n按下確定後系統將重新載入。';
                                 this.reloadOnClose = true;
                                 this.showMsgBox = true;
-                            } else throw new Error('檔案內容不符');
+                            } else {
+                                throw new Error('檔案內容不符');
+                            }
                         } catch (err) {
                             this.msgBoxText = '❌ 還原失敗！請確保上傳的是系統匯出的正確備份檔 (.json)。';
                             this.showMsgBox = true;
@@ -1012,16 +1098,21 @@
 
                 closeMsgBox() {
                     this.showMsgBox = false;
-                    if (this.reloadOnClose) window.location.reload();
+                    if (this.reloadOnClose) {
+                        window.location.reload();
+                    }
                 },
 
                 checkReminder() {
                     if (!this.investmentPlans || this.investmentPlans.length === 0) return;
+                    
                     const days = this.investmentPlans.map(p => parseInt(p.day)).filter(d => !isNaN(d) && d >= 1 && d <= 31);
                     if (days.length === 0) return;
+                    
                     const maxDay = Math.max(...days);
                     const today = new Date();
                     const currentMonthKey = `${today.getFullYear()}-${today.getMonth()}`;
+                    
                     if (today.getDate() > maxDay && this.lastRemindedMonth !== currentMonthKey) {
                         this.showUpdateReminder = true;
                     }
@@ -1034,12 +1125,27 @@
                     this.saveData();
                 },
 
+                async refreshPrice() {
+                    if (this.isFetchingPrice) return;
+                    this.isFetchingPrice = true;
+                    this.realTimeFetched = false; 
+                    await this.fetchRealTimePrice();
+                    this.autoCheckIndicators();
+                    if(this.chartRendered && this.showChart) {
+                        this.renderChart(); 
+                    }
+                    setTimeout(() => {
+                        this.isFetchingPrice = false;
+                    }, 500);
+                },
+
                 async fetchRealTimePrice() {
                     const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&range=1d&interval=1m&_r=${Math.random()}&_t=${Date.now()}`;
                     const data = await this._fetchWithProxy(yfUrl);
                     if (data && data.chart && data.chart.result && data.chart.result[0]) {
                         const result = data.chart.result[0];
                         const meta = result.meta;
+                        
                         let latestPrice = meta?.regularMarketPrice;
                         let latestTime = meta?.regularMarketTime;
 
@@ -1048,24 +1154,37 @@
                             const timestamps = result.timestamp;
                             for (let i = closes.length - 1; i >= 0; i--) {
                                 if (closes[i] !== null && closes[i] !== undefined) {
-                                    latestPrice = closes[i]; latestTime = timestamps[i]; break;
+                                    latestPrice = closes[i];
+                                    latestTime = timestamps[i];
+                                    break;
                                 }
                             }
                         }
 
                         if (latestPrice) {
                             this.currentPrice = latestPrice;
-                            if (meta && meta.chartPreviousClose) this.prevClose = meta.chartPreviousClose;
-                            else if (meta && meta.previousClose) this.prevClose = meta.previousClose;
-                            if (meta && meta.regularMarketVolume) this.currentVolume = meta.regularMarketVolume;
+                            if (meta && meta.chartPreviousClose) {
+                                this.prevClose = meta.chartPreviousClose;
+                            } else if (meta && meta.previousClose) {
+                                this.prevClose = meta.previousClose;
+                            }
+                            
+                            if (meta && meta.regularMarketVolume) {
+                                this.currentVolume = meta.regularMarketVolume;
+                            }
                             if (latestTime) {
-                                const d = new Date(latestTime * 1000);
-                                this.priceUpdateTime = `${String(d.getMonth() + 1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                                const date = new Date(latestTime * 1000);
+                                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                                const dd = String(date.getDate()).padStart(2, '0');
+                                const hh = String(date.getHours()).padStart(2, '0');
+                                const min = String(date.getMinutes()).padStart(2, '0');
+                                this.priceUpdateTime = `${mm}/${dd} ${hh}:${min}`;
                             }
                             this.realTimeFetched = true;
                         }
                     } else {
-                        this.priceUpdateTime = '即時連線失敗(顯示昨收)'; this.realTimeFetched = false;
+                        this.priceUpdateTime = '即時連線失敗(顯示昨收)';
+                        this.realTimeFetched = false;
                     }
                 },
 
@@ -1082,6 +1201,7 @@
                     if (this.cachedHistoricalData && this.cachedHistoricalData.length > 0) {
                         let lastRecord = this.cachedHistoricalData[this.cachedHistoricalData.length - 1];
                         let lastDate = new Date(lastRecord.time);
+                        
                         lastDate.setDate(lastDate.getDate() - 2); 
                         startDateStr = lastDate.toISOString().split('T')[0];
 
@@ -1093,13 +1213,22 @@
                         else if (daysDiff <= 365) yfRange = '1y';
                         else yfRange = 'max';
                     } else {
-                        const d = new Date(); d.setFullYear(d.getFullYear() - 12); startDateStr = d.toISOString().split('T')[0];
+                        const d = new Date();
+                        d.setFullYear(d.getFullYear() - 12); 
+                        startDateStr = d.toISOString().split('T')[0];
                     }
 
                     const finmindUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=0050&start_date=${startDateStr}`;
                     const fmData = await this._fetchSimpleJson(finmindUrl);
-                    if (fmData && fmData.msg === 'success' && fmData.data) {
-                        fetchedData = fmData.data.map(item => ({ time: new Date(item.date).getTime(), open: item.open, close: item.close, high: item.max, low: item.min, volume: item.Trading_Volume }));
+                    if (fmData && fmData.msg === 'success' && fmData.data && fmData.data.length > 0) {
+                        fetchedData = fmData.data.map(item => ({
+                            time: new Date(item.date).getTime(), 
+                            open: item.open, 
+                            close: item.close, 
+                            high: item.max, 
+                            low: item.min, 
+                            volume: item.Trading_Volume
+                        }));
                     }
 
                     if (fetchedData.length === 0) {
@@ -1107,10 +1236,20 @@
                         const yfData = await this._fetchWithProxy(yfUrl);
                         if (yfData && yfData.chart && yfData.chart.result && yfData.chart.result[0]) {
                             const result = yfData.chart.result[0];
-                            const timestamps = result.timestamp; const quotes = result.indicators.quote[0];
+                            const timestamps = result.timestamp;
+                            const quotes = result.indicators.quote[0];
                             if (timestamps && quotes) {
                                 for(let i = 0; i < timestamps.length; i++) {
-                                    if (quotes.close[i] != null) fetchedData.push({ time: timestamps[i] * 1000, open: quotes.open[i]||quotes.close[i], close: quotes.close[i], high: quotes.high[i], low: quotes.low[i], volume: quotes.volume[i]||0 });
+                                    if (quotes.close[i] !== null && quotes.close[i] !== undefined) {
+                                        fetchedData.push({ 
+                                            time: timestamps[i] * 1000, 
+                                            open: quotes.open[i] || quotes.close[i],
+                                            close: quotes.close[i], 
+                                            high: quotes.high[i], 
+                                            low: quotes.low[i],
+                                            volume: quotes.volume[i] || 0
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -1118,19 +1257,45 @@
 
                     if (fetchedData.length > 0) {
                         const splitTime = new Date('2025-06-18T00:00:00+08:00').getTime();
-                        fetchedData = fetchedData.map(item => item.time < splitTime ? { time: item.time, open: item.open/4, close: item.close/4, high: item.high/4, low: item.low/4, volume: item.volume } : item);
+                        fetchedData = fetchedData.map(item => {
+                            if (item.time < splitTime) {
+                                return {
+                                    time: item.time, open: item.open / 4, close: item.close / 4,
+                                    high: item.high / 4, low: item.low / 4, volume: item.volume
+                                };
+                            }
+                            return item;
+                        });
                     }
 
                     let uniqueMap = new Map();
+                    
                     if (this.cachedHistoricalData) {
                         for (let item of this.cachedHistoricalData) {
                             let t = new Date(item.time || item.date);
-                            if (!isNaN(t.getTime())) uniqueMap.set(`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`, { time: t.getTime(), open: item.open??item.close, close: item.close, high: item.high??item.max??item.close, low: item.low??item.min??item.close, volume: item.volume??item.Trading_Volume??0 });
+                            if (isNaN(t.getTime())) continue; 
+                            let yyyy = t.getFullYear();
+                            let mm = String(t.getMonth() + 1).padStart(2, '0');
+                            let dd = String(t.getDate()).padStart(2, '0');
+                            
+                            uniqueMap.set(`${yyyy}-${mm}-${dd}`, {
+                                time: t.getTime(),
+                                open: item.open ?? item.close,
+                                close: item.close,
+                                high: item.high ?? item.max ?? item.close,
+                                low: item.low ?? item.min ?? item.close,
+                                volume: item.volume ?? item.Trading_Volume ?? 0
+                            });
                         }
                     }
+                    
                     for (let item of fetchedData) {
                         let t = new Date(item.time);
-                        if (!isNaN(t.getTime())) uniqueMap.set(`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`, item);
+                        if (isNaN(t.getTime())) continue;
+                        let yyyy = t.getFullYear();
+                        let mm = String(t.getMonth() + 1).padStart(2, '0');
+                        let dd = String(t.getDate()).padStart(2, '0');
+                        uniqueMap.set(`${yyyy}-${mm}-${dd}`, item);
                     }
 
                     let finalData = Array.from(uniqueMap.values());
@@ -1138,11 +1303,37 @@
 
                     if (finalData.length > 0) {
                         this.cachedHistoricalData = finalData;
-                        try { localStorage.setItem('THH0050_History_V2', JSON.stringify(finalData)); } catch(e) {}
+                        try {
+                            localStorage.setItem('THH0050_History_V2', JSON.stringify(finalData));
+                        } catch(e) { console.warn("快取儲存空間不足", e); }
+
                         this.historicalDataLoaded = true;
                         this.calculateIndicators(finalData);
                         this.processAutoDeduct(finalData);
                     }
+
+                    // 取得證交所淨值比
+                    const pbData = await this._fetchSimpleJson('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
+                    if (pbData) {
+                        const stock0050 = pbData.find(s => s.Code === '0050');
+                        this.pbRatio = (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') ? parseFloat(stock0050.PBratio).toFixed(2) : '無資料';
+                    } else this.pbRatio = 'API阻擋';
+
+                    // 取得融資餘額
+                    const marginData = await this._fetchSimpleJson('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN');
+                    if (marginData) {
+                        const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
+                        if (marginAmountItem && marginAmountItem.CurrentBalance) {
+                            this.marginBalance = (parseFloat(marginAmountItem.CurrentBalance.replace(/,/g, '')) / 100000).toFixed(2) + ' 億';
+                        } else this.marginBalance = '無資料';
+                    } else this.marginBalance = 'API阻擋';
+
+                    // 取得元大 ETF 折溢價
+                    const yuantaApi = 'https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066';
+                    const yuantaData = await this._fetchSimpleJson('https://corsproxy.io/?' + encodeURIComponent(yuantaApi));
+                    if (yuantaData) {
+                        this.etfDiscount = (Array.isArray(yuantaData) && yuantaData.length > 0 && yuantaData[0].pdRate) ? yuantaData[0].pdRate + '%' : '無資料';
+                    } else this.etfDiscount = 'API阻擋';
 
                     this.autoCheckIndicators();
                     this.isFetching = false;
@@ -1150,6 +1341,7 @@
 
                 calculateIndicators(data) {
                     const len = data.length;
+                    
                     if (!this.realTimeFetched || this.currentPrice <= 0) {
                         this.currentPrice = data[len - 1].close;
                         if (!this.currentVolume) this.currentVolume = data[len - 1].volume || 0;
@@ -1160,51 +1352,108 @@
                     for (let d of data) {
                         let t = new Date(d.time || d.date);
                         if (isNaN(t.getTime())) continue; 
-                        let timeStr = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+                        
+                        let yyyy = t.getFullYear();
+                        let mm = String(t.getMonth() + 1).padStart(2, '0');
+                        let dd = String(t.getDate()).padStart(2, '0');
+                        let timeStr = `${yyyy}-${mm}-${dd}`;
+                        
                         let closeVal = Number(d.close);
                         if (!seen.has(timeStr) && !isNaN(closeVal) && closeVal > 0) {
                             seen.add(timeStr);
-                            let openVal = Number(d.open) || closeVal;
-                            let highVal = Number(d.high) || closeVal;
-                            let lowVal = Number(d.low) || closeVal;
-                            uniqueChartData.push({ time: timeStr, open: openVal, high: Math.max(openVal, closeVal, highVal, lowVal), low: Math.min(openVal, closeVal, highVal, lowVal), close: closeVal, volume: Number(d.volume||d.Trading_Volume)||0 });
+                            
+                            let openVal = Number(d.open);
+                            if (isNaN(openVal) || openVal <= 0) openVal = closeVal;
+                            
+                            let highVal = Number(d.high);
+                            if (isNaN(highVal) || highVal <= 0) highVal = closeVal;
+                            
+                            let lowVal = Number(d.low);
+                            if (isNaN(lowVal) || lowVal <= 0) lowVal = closeVal;
+                            
+                            let finalHigh = Math.max(openVal, closeVal, highVal, lowVal);
+                            let finalLow = Math.min(openVal, closeVal, highVal, lowVal);
+
+                            let volVal = Number(d.volume || d.Trading_Volume);
+                            if (isNaN(volVal) || volVal < 0) volVal = 0;
+
+                            uniqueChartData.push({ 
+                                time: timeStr, 
+                                open: openVal, 
+                                high: finalHigh, 
+                                low: finalLow, 
+                                close: closeVal, 
+                                volume: volVal 
+                            });
                         }
                     }
+                    
                     uniqueChartData.sort((a, b) => a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
                     this.chartData = uniqueChartData;
 
-                    if (this.chartData.length >= 2 && (!this.realTimeFetched || this.prevClose === 0)) this.prevClose = this.chartData[this.chartData.length - 2].close;
-
-                    let ma240Arr = [], ma2400Arr = [];
-                    for (let i = 0; i < uniqueChartData.length; i++) {
-                        if (i >= 239) {
-                            let sum = 0; for (let j = i - 239; j <= i; j++) sum += uniqueChartData[j].close;
-                            if (sum/240 > 0) ma240Arr.push({ time: uniqueChartData[i].time, value: sum/240 });
-                        }
-                        if (i >= 2399) {
-                            let sum = 0; for (let j = i - 2399; j <= i; j++) sum += uniqueChartData[j].close;
-                            if (sum/2400 > 0) ma2400Arr.push({ time: uniqueChartData[i].time, value: sum/2400 });
+                    if (this.chartData.length >= 2) {
+                        if (!this.realTimeFetched || this.prevClose === 0) {
+                            this.prevClose = this.chartData[this.chartData.length - 2].close;
                         }
                     }
-                    this.ma240Data = ma240Arr; this.ma2400Data = ma2400Arr;
 
-                    if (len >= 2400) { let s=0; for(let i=len-2400; i<len; i++) s+=data[i].close; this.calc_ma120 = s/2400; }
-                    if (len >= 240) { let s=0; for(let i=len-240; i<len; i++) s+=data[i].close; this.calc_ma240 = s/240; }
+                    let ma240Arr = [];
+                    let ma2400Arr = [];
+                    for (let i = 0; i < uniqueChartData.length; i++) {
+                        if (i >= 239) {
+                            let sum = 0;
+                            for (let j = i - 239; j <= i; j++) sum += uniqueChartData[j].close;
+                            let avg = sum / 240;
+                            if (!isNaN(avg) && avg > 0) ma240Arr.push({ time: uniqueChartData[i].time, value: avg });
+                        }
+                        if (i >= 2399) {
+                            let sum = 0;
+                            for (let j = i - 2399; j <= i; j++) sum += uniqueChartData[j].close;
+                            let avg = sum / 2400;
+                            if (!isNaN(avg) && avg > 0) ma2400Arr.push({ time: uniqueChartData[i].time, value: avg });
+                        }
+                    }
+                    this.ma240Data = ma240Arr;
+                    this.ma2400Data = ma2400Arr;
+
+                    if (len >= 2400) {
+                        let sum = 0;
+                        for(let i = len - 2400; i < len; i++) sum += data[i].close;
+                        this.calc_ma120 = sum / 2400; 
+                    } else this.calc_ma120 = 0; 
+                    
+                    if (len >= 240) {
+                        let sum = 0;
+                        for(let i = len - 240; i < len; i++) sum += data[i].close;
+                        this.calc_ma240 = sum / 240;
+                    }
 
                     if (len >= 20) {
-                        let sumVol = 0, sumPrice = 0;
-                        for(let i = len - 20; i < len; i++) { sumVol += (data[i].volume || 0); sumPrice += data[i].close; }
-                        let avgVol = sumVol / 20; this.calc_ma20 = sumPrice / 20; 
+                        let sumVol = 0;
+                        let sumPrice = 0;
+                        for(let i = len - 20; i < len; i++) {
+                            sumVol += (data[i].volume || 0);
+                            sumPrice += data[i].close;
+                        }
+                        let avgVol = sumVol / 20;
+                        this.calc_ma20 = sumPrice / 20; 
+                        
                         let targetVol = this.currentVolume > 0 ? this.currentVolume : (data[len-1].volume || 0);
+                        this.currentVolume = targetVol; 
                         
                         if (avgVol > 0) {
                             if (targetVol > avgVol * 1.5) this.volumeStatus = '🔥';
                             else if (targetVol < avgVol * 0.6) this.volumeStatus = '🧊';
                             else this.volumeStatus = '正常';
                         }
-                        if (this.currentPrice > this.calc_ma20 * 1.05) this.priceStatus = '🚀'; 
-                        else if (this.currentPrice < this.calc_ma20 * 0.95) this.priceStatus = '📉'; 
-                        else this.priceStatus = '⚖️'; 
+                        
+                        if (this.currentPrice > this.calc_ma20 * 1.05) {
+                            this.priceStatus = '🚀'; 
+                        } else if (this.currentPrice < this.calc_ma20 * 0.95) {
+                            this.priceStatus = '📉'; 
+                        } else {
+                            this.priceStatus = '⚖️'; 
+                        }
                     }
 
                     let k = 50, d = 50;
@@ -1215,7 +1464,8 @@
                             if (data[j].low < lowest) lowest = data[j].low;
                         }
                         let rsv = highest === lowest ? 50 : ((data[i].close - lowest) / (highest - lowest)) * 100;
-                        k = (2/3) * k + (1/3) * rsv; d = (2/3) * d + (1/3) * k;
+                        k = (2/3) * k + (1/3) * rsv;
+                        d = (2/3) * d + (1/3) * k;
                     }
                     this.calc_k = k;
                 },
@@ -1224,55 +1474,113 @@
                     this.cond_k = (this.calc_k > 0) ? (this.calc_k < 20) : false;
                     this.cond_ma240 = (this.calc_ma240 > 0) ? (this.currentPrice < this.calc_ma240) : false;
                     this.cond_ma120 = (this.calc_ma120 > 0) ? (this.currentPrice < this.calc_ma120) : false;
+                    
+                    let pb = parseFloat(this.pbRatio);
+                    this.cond_pb = !isNaN(pb) ? (pb < 1.6) : false;
+                    
                     if (this.currentAvgCost > 0) {
                         this.cond_cost90 = this.currentPrice <= this.currentAvgCost * 0.9;
                         this.cond_cost80 = this.currentPrice <= this.currentAvgCost * 0.8;
+                    } else {
+                        this.cond_cost90 = false;
+                        this.cond_cost80 = false;
                     }
+
+                    let discount = parseFloat(this.etfDiscount);
+                    this.cond_discount = !isNaN(discount) ? (discount < 0) : false;
+                    
+                    this.isBlueLight = false;
+                    this.isPanic = false;
                 },
 
                 processAutoDeduct(historicalData) {
                     if (!this.lastCheckDate || !this.investmentPlans || this.investmentPlans.length === 0) return;
-                    const today = new Date(); today.setHours(0,0,0,0);
-                    let lastCheck = new Date(this.lastCheckDate); lastCheck.setHours(0,0,0,0);
+
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    
+                    let lastCheck = new Date(this.lastCheckDate);
+                    lastCheck.setHours(0,0,0,0);
+
                     if (lastCheck.getTime() >= today.getTime()) return;
 
                     let logs = [];
-                    let currentDate = new Date(lastCheck); currentDate.setDate(currentDate.getDate() + 1);
-                    let planStart = this.startDate ? new Date(this.startDate) : new Date(0); planStart.setHours(0,0,0,0);
+                    let currentDate = new Date(lastCheck);
+                    currentDate.setDate(currentDate.getDate() + 1);
+
+                    let planStart = this.startDate ? new Date(this.startDate) : new Date(0);
+                    planStart.setHours(0,0,0,0);
 
                     while (currentDate <= today) {
                         if (currentDate >= planStart) {
-                            const plansToday = this.investmentPlans.filter(p => parseInt(p.day) === currentDate.getDate() && p.amount > 0);
+                            const todayDay = currentDate.getDate();
+                            const plansToday = this.investmentPlans.filter(p => parseInt(p.day) === todayDay && p.amount > 0);
+                            
                             for (let plan of plansToday) {
-                                let executedPrice = this.currentPrice, executedTime = currentDate;
+                                const targetTime = currentDate.getTime();
+                                let executedPrice = this.currentPrice;
+                                let executedTime = currentDate;
+
                                 for (let i = 0; i < historicalData.length; i++) {
-                                    if (historicalData[i].time >= currentDate.getTime()) { executedPrice = historicalData[i].close; executedTime = new Date(historicalData[i].time); break; }
+                                    if (historicalData[i].time >= targetTime) {
+                                        executedPrice = historicalData[i].close;
+                                        executedTime = new Date(historicalData[i].time);
+                                        break;
+                                    }
                                 }
+
                                 const sharesBought = Math.floor(plan.amount / executedPrice);
                                 const actualCost = Math.floor(sharesBought * executedPrice);
-                                this.transactions.push({ id: Date.now() + Math.random(), date: currentDate.toISOString().split('T')[0], amount: actualCost, shares: sharesBought, price: executedPrice, type: 'auto', action: 'buy' });
-                                logs.push(`📅 ${currentDate.toLocaleDateString()}：收盤價 ${executedPrice.toFixed(2)}，買入 ${sharesBought} 股 (實扣 ${actualCost} 元)`);
+
+                                this.transactions.push({
+                                    id: Date.now() + Math.random(),
+                                    date: currentDate.toISOString().split('T')[0],
+                                    amount: actualCost,
+                                    shares: sharesBought,
+                                    price: executedPrice,
+                                    type: 'auto',
+                                    action: 'buy'
+                                });
+
+                                let dateStr = currentDate.toLocaleDateString();
+                                if (executedTime.getTime() !== currentDate.getTime()) {
+                                    dateStr = `${dateStr} (順延至 ${executedTime.toLocaleDateString()})`;
+                                }
+
+                                logs.push(`📅 ${dateStr}：收盤價 ${executedPrice.toFixed(2)}，買入 ${sharesBought} 股 (實扣 ${actualCost} 元)`);
                             }
                         }
                         currentDate.setDate(currentDate.getDate() + 1);
                     }
 
                     if (logs.length > 0) {
-                        this.newLogs = logs; this.showLogs = true; this.downloadBackupFile();
+                        this.newLogs = logs;
+                        this.showLogs = true;
+                        this.downloadBackupFile();
                     }
-                    this.lastCheckDate = new Date().getTime(); this.saveData();
+
+                    this.lastCheckDate = new Date().getTime();
+                    this.saveData();
                 },
 
                 get inventoryState() {
                     let shares = parseFloat(this.baseShares) || 0;
                     let avgCost = parseFloat(this.baseAvgCost) || 0;
+
                     const sortedTxns = [...this.transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
 
                     for (const t of sortedTxns) {
-                        const s = parseFloat(t.shares) || 0; const amt = parseFloat(t.amount) || 0; const act = t.action || 'buy';
+                        const s = parseFloat(t.shares) || 0;
+                        const amt = parseFloat(t.amount) || 0;
+                        const act = t.action || 'buy';
+
                         if (act === 'buy' || act === 'sync') { 
-                            const totalCost = shares * avgCost + amt; shares += s; avgCost = shares > 0 ? totalCost / shares : 0;
-                        } else if (act === 'sell' || act === 'withdraw') { shares = Math.max(0, shares - s); }
+                            const totalCost = shares * avgCost + amt;
+                            shares += s;
+                            avgCost = shares > 0 ? totalCost / shares : 0;
+                        } else if (act === 'sell' || act === 'withdraw') {
+                            shares = Math.max(0, shares - s);
+                        }
                     }
                     return { shares, avgCost, totalCost: shares * avgCost };
                 },
@@ -1281,14 +1589,25 @@
                 get currentTotalCost() { return this.inventoryState.totalCost; },
                 get currentAvgCost() { return this.currentTotalShares > 0 ? parseFloat(this.inventoryState.avgCost.toFixed(2)) : 0; },
 
-                get totalCashOut() { return (parseFloat(this.baseShares) * parseFloat(this.baseAvgCost) || 0) + this.transactions.filter(t => t.action === 'buy' || t.action === 'sync').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0); },
-                get totalCashIn() { return this.transactions.filter(t => t.action === 'sell' || t.action === 'dividend' || t.action === 'withdraw').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0); },
+                get totalCashOut() {
+                    return (parseFloat(this.baseShares) * parseFloat(this.baseAvgCost) || 0) + 
+                           this.transactions.filter(t => t.action === 'buy' || t.action === 'sync').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                },
+                get totalCashIn() {
+                    return this.transactions.filter(t => t.action === 'sell' || t.action === 'dividend' || t.action === 'withdraw').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                },
 
                 get currentScore() {
                     let s = 0;
-                    if (this.cond_k) s += 10; if (this.cond_ma240) s += 15; if (this.cond_ma120) s += 20;
-                    if (this.cond_pb) s += 15; if (this.isBlueLight) s += 20; if (this.isPanic) s += 10;
-                    if (this.cond_cost90) s += 5; if (this.cond_cost80) s += 5; if (this.cond_discount) s += 5;
+                    if (this.cond_k) s += 10;
+                    if (this.cond_ma240) s += 15;
+                    if (this.cond_ma120) s += 20;
+                    if (this.cond_pb) s += 15;
+                    if (this.isBlueLight) s += 20;
+                    if (this.isPanic) s += 10;
+                    if (this.cond_cost90) s += 5;
+                    if (this.cond_cost80) s += 5;
+                    if (this.cond_discount) s += 5;
                     return Math.min(s, 100); 
                 },
 
@@ -1299,11 +1618,23 @@
                 },
 
                 get recommendation() {
-                    const s = this.currentScore; let mult = 0, text = "維持原定期定額，保持紀律", color = "text-emerald-400", bg = "bg-emerald-400/10", border = "border-emerald-500/30";
-                    if (s >= 80) { mult = 3.0; text = "歷史重壓區！千載難逢，大舉加碼"; color="text-purple-400"; bg="bg-purple-900/40"; border="border-purple-500/50"; }
-                    else if (s >= 60) { mult = 2.0; text = "恐慌超跌區！大舉買進"; color="text-red-400"; bg="bg-red-900/40"; border="border-red-500/50"; }
-                    else if (s >= 40) { mult = 1.0; text = "價值浮現區！值得投入"; color="text-orange-400"; bg="bg-orange-900/40"; border="border-orange-500/50"; }
-                    else if (s >= 20) { mult = 0.5; text = "逢低佈局區！可小額試水溫"; color="text-yellow-400"; bg="bg-yellow-900/40"; border="border-yellow-500/50"; }
+                    const s = this.currentScore;
+                    let mult = 0;
+                    let text = "維持原定期定額，保持紀律";
+                    let color = "text-emerald-400";
+                    let bg = "bg-emerald-400/10";
+                    let border = "border-emerald-500/30";
+
+                    if (s >= 80) { 
+                        mult = 3.0; text = "歷史重壓區！千載難逢，強烈建議大舉加碼或動用儲備金"; color="text-purple-400"; bg="bg-purple-900/40"; border="border-purple-500/50";
+                    } else if (s >= 60) { 
+                        mult = 2.0; text = "恐慌超跌區！多項空頭指標觸發，大舉買進"; color="text-red-400"; bg="bg-red-900/40"; border="border-red-500/50";
+                    } else if (s >= 40) { 
+                        mult = 1.0; text = "價值浮現區！中線趨勢轉弱或總經低迷，值得投入"; color="text-orange-400"; bg="bg-orange-900/40"; border="border-orange-500/50";
+                    } else if (s >= 20) { 
+                        mult = 0.5; text = "逢低佈局區！短線超跌或小幅修正，可小額試水溫"; color="text-yellow-400"; bg="bg-yellow-900/40"; border="border-yellow-500/50";
+                    }
+
                     return { mult, text, color, bg, border, amount: this.averageBaseAmount * mult };
                 },
 
@@ -1312,26 +1643,82 @@
                 get profit() { return (this.marketValueNum + this.totalCashIn - this.totalCashOut).toFixed(0); },
                 get roi() { return this.totalCashOut <= 0 ? null : (((this.marketValueNum + this.totalCashIn - this.totalCashOut) / this.totalCashOut) * 100).toFixed(2); },
 
-                get targetFireFund() { return (parseFloat(this.targetMonthlyExpense) || 0) * 12 / 0.04; },
-                get fireProgress() { return this.targetFireFund <= 0 ? 0 : Math.min(100, (this.marketValueNum / this.targetFireFund) * 100).toFixed(1); },
-                get currentSafeMonthlyWithdrawal() { return (this.marketValueNum * 0.04 / 12).toFixed(0); },
-                get currentWithdrawalRate() { return this.marketValueNum <= 0 ? 0 : ((parseFloat(this.targetMonthlyExpense) || 0) * 12 / this.marketValueNum); },
+                get targetFireFund() {
+                    let monthly = parseFloat(this.targetMonthlyExpense) || 0;
+                    return monthly * 12 / 0.04; 
+                },
+                get fireProgress() {
+                    if (this.targetFireFund <= 0) return 0;
+                    let pct = (this.marketValueNum / this.targetFireFund) * 100;
+                    return Math.min(100, pct).toFixed(1);
+                },
+                get currentSafeMonthlyWithdrawal() {
+                    return (this.marketValueNum * 0.04 / 12).toFixed(0); 
+                },
+                get currentWithdrawalRate() {
+                    if (this.marketValueNum <= 0) return 0;
+                    let annualExpense = (parseFloat(this.targetMonthlyExpense) || 0) * 12;
+                    return (annualExpense / this.marketValueNum);
+                },
                 
                 get gkStatus() {
-                    let r = this.currentWithdrawalRate; let progress = parseFloat(this.fireProgress);
+                    let r = this.currentWithdrawalRate;
+                    let progress = parseFloat(this.fireProgress);
+                    
                     if (progress < 80 || this.marketValueNum === 0) {
-                        return { state: 'accumulating', title: '🌱 資產累積中 (尚未達標)', desc: '目前總資產尚未達目標的 80%，提領率過高，不建議開始退休提領。', color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', recommendedMonthly: this.currentSafeMonthlyWithdrawal };
+                        return { 
+                            state: 'accumulating', 
+                            title: '🌱 資產累積中 (尚未達標)', 
+                            desc: '目前總資產尚未達目標的 80%，提領率過高，不建議開始退休提領。請持續運用定期定額與逢低加碼策略擴大本金！', 
+                            color: 'text-slate-600',
+                            bg: 'bg-slate-50',
+                            border: 'border-slate-200',
+                            recommendedMonthly: this.currentSafeMonthlyWithdrawal
+                        };
                     }
+
                     if (r > 0.048) {
                         if (this.calc_ma240 > 0 && this.currentPrice < this.calc_ma240) {
-                            return { state: 'danger-bear', title: '🚨 熊市警報！觸發保本護欄', desc: '市場跌破長期年線且當前提領率飆破 4.8%！⚠️ 強烈建議今年「全面暫停從股市提領」。', color: 'text-red-700', bg: 'bg-red-100', border: 'border-red-400', recommendedMonthly: 0 };
+                            return {
+                                state: 'danger-bear',
+                                title: '🚨 熊市警報！觸發保本護欄',
+                                desc: '市場跌破長期年線且當前提領率已飆破 4.8%！⚠️ 強烈建議今年「全面暫停從股市提領」，改用您預備的現金緩衝墊生活，避免在谷底賤賣資產造成本金永久性耗損。',
+                                color: 'text-red-700',
+                                bg: 'bg-red-100',
+                                border: 'border-red-400',
+                                recommendedMonthly: 0 
+                            };
                         } else {
-                            return { state: 'danger', title: '📉 觸發保本護欄 (減薪 10%)', desc: '提領率逼近 4.8% 危險上限！建議您今年「共體時艱」，將預算下調 10%。', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) };
+                            return { 
+                                state: 'danger', 
+                                title: '📉 觸發保本護欄 (建議減薪 10%)', 
+                                desc: '資產出現縮水，當前提領率已逼近 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', 
+                                color: 'text-red-600',
+                                bg: 'bg-red-50',
+                                border: 'border-red-200',
+                                recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) 
+                            };
                         }
                     } else if (r < 0.032) {
-                        return { state: 'success', title: '🎉 觸發加薪護欄 (加薪 10%)', desc: '市場大行牛市，提領率極低！您可以安心放寬預算，給自己加薪 10%。', color: 'text-emerald-700', bg: 'bg-emerald-100', border: 'border-emerald-400', recommendedMonthly: (this.targetMonthlyExpense * 1.1).toFixed(0) };
+                        return { 
+                            state: 'success', 
+                            title: '🎉 觸發加薪護欄 (建議加薪 10%)', 
+                            desc: '市場大行牛市，提領率極低！您可以安心放寬預算，給自己加薪 10%，甚至安排一趟旅遊來享受財務自由的果實。', 
+                            color: 'text-emerald-700',
+                            bg: 'bg-emerald-100',
+                            border: 'border-emerald-400',
+                            recommendedMonthly: (this.targetMonthlyExpense * 1.1).toFixed(0) 
+                        };
                     } else {
-                        return { state: 'normal', title: '✅ 提領率健康 (維持現狀)', desc: '目前提領率處於 3.2% ~ 4.8% 的安全健康範圍，請維持原定生活預算。', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', recommendedMonthly: this.targetMonthlyExpense };
+                        return { 
+                            state: 'normal', 
+                            title: '✅ 提領率健康 (維持現狀)', 
+                            desc: '目前的提領率處於 3.2% ~ 4.8% 的安全健康範圍。請維持您原定的生活預算，不需特別調整。', 
+                            color: 'text-blue-700',
+                            bg: 'bg-blue-50',
+                            border: 'border-blue-200',
+                            recommendedMonthly: this.targetMonthlyExpense 
+                        };
                     }
                 }
             }));
