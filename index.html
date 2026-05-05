@@ -103,7 +103,6 @@
                 isFetching: false,
                 isFetchingPrice: false,
                 realTimeFetched: false,
-                priceUpdateTime: '',   
                 historicalDataLoaded: false,
                 calc_k: 0,
                 calc_ma20: 0,
@@ -435,7 +434,6 @@
                         this.msgBoxText = `✅ 庫存校正已完成！\n系統已自動補足差額股數：${diffShares} 股\n自動微調成本差額：${diffAmount} 元`;
                         this.showMsgBox = true;
                     } else {
-                        // 包括 buy, sell, withdraw
                         if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0 || !this.manualDate) {
                             this.msgBoxText = '請輸入完整的交易日期、股數與成交單價！';
                             this.showMsgBox = true;
@@ -615,55 +613,17 @@
                 },
 
                 async fetchRealTimePrice() {
-                    // 加入 range=1d&interval=1m 強制抓取當日分鐘K，並加入隨機亂數強制穿透 Proxy 快取
-                    const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&range=1d&interval=1m&_r=${Math.random()}&_t=${Date.now()}`;
+                    const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&_t=${Date.now()}`;
                     const data = await this._fetchWithProxy(yfUrl);
                     if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                        const result = data.chart.result[0];
-                        const meta = result.meta;
-                        
-                        let latestPrice = meta?.regularMarketPrice;
-                        let latestTime = meta?.regularMarketTime;
-
-                        // 從最新的一根 K 棒中提取價格，避免 meta 延遲
-                        if (result.indicators && result.indicators.quote && result.indicators.quote[0].close) {
-                            const closes = result.indicators.quote[0].close;
-                            const timestamps = result.timestamp;
-                            for (let i = closes.length - 1; i >= 0; i--) {
-                                if (closes[i] !== null && closes[i] !== undefined) {
-                                    latestPrice = closes[i];
-                                    latestTime = timestamps[i];
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (latestPrice) {
-                            this.currentPrice = latestPrice;
-                            // 強制讀取官方的真正「昨收價」，解決歷史陣列在日夜間造成的錯位
-                            if (meta && meta.chartPreviousClose) {
-                                this.prevClose = meta.chartPreviousClose;
-                            } else if (meta && meta.previousClose) {
-                                this.prevClose = meta.previousClose;
-                            }
-                            
-                            if (meta && meta.regularMarketVolume) {
+                        const meta = data.chart.result[0].meta;
+                        if (meta && meta.regularMarketPrice) {
+                            this.currentPrice = meta.regularMarketPrice;
+                            if (meta.regularMarketVolume) {
                                 this.currentVolume = meta.regularMarketVolume;
-                            }
-                            if (latestTime) {
-                                const date = new Date(latestTime * 1000);
-                                const mm = String(date.getMonth() + 1).padStart(2, '0');
-                                const dd = String(date.getDate()).padStart(2, '0');
-                                const hh = String(date.getHours()).padStart(2, '0');
-                                const min = String(date.getMinutes()).padStart(2, '0');
-                                this.priceUpdateTime = `${mm}/${dd} ${hh}:${min}`;
                             }
                             this.realTimeFetched = true;
                         }
-                    } else {
-                        // 如果即時 API 失敗，退回顯示歷史資料最後一天(昨日收盤)時提示使用者
-                        this.priceUpdateTime = '即時連線失敗(顯示昨收)';
-                        this.realTimeFetched = false;
                     }
                 },
 
@@ -870,11 +830,8 @@
                     uniqueChartData.sort((a, b) => a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
                     this.chartData = uniqueChartData;
 
-                    // 若即時報價失敗或沒有抓到昨收，才退回使用歷史陣列作為昨收基準
                     if (this.chartData.length >= 2) {
-                        if (!this.realTimeFetched || this.prevClose === 0) {
-                            this.prevClose = this.chartData[this.chartData.length - 2].close;
-                        }
+                        this.prevClose = this.chartData[this.chartData.length - 2].close;
                     }
 
                     let ma240Arr = [];
@@ -1060,7 +1017,7 @@
                             const totalCost = shares * avgCost + amt;
                             shares += s;
                             avgCost = shares > 0 ? totalCost / shares : 0;
-                        } else if (act === 'sell' || act === 'withdraw') {
+                        } else if (act === 'sell') {
                             shares = Math.max(0, shares - s);
                         }
                     }
@@ -1076,10 +1033,7 @@
                            this.transactions.filter(t => t.action === 'buy' || t.action === 'sync').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
                 },
                 get totalCashIn() {
-                    return this.transactions.filter(t => t.action === 'sell' || t.action === 'dividend' || t.action === 'withdraw').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
-                },
-                get totalWithdrawn() {
-                    return this.transactions.filter(t => t.action === 'withdraw').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                    return this.transactions.filter(t => t.action === 'sell' || t.action === 'dividend').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
                 },
 
                 get currentScore() {
@@ -1162,27 +1116,15 @@
                     }
 
                     if (r > 0.048) {
-                        if (this.cond_ma240) {
-                            return {
-                                state: 'danger-bear',
-                                title: '🚨 熊市警報！觸發保本護欄',
-                                desc: '市場跌破長期年線且當前提領率已飆破 4.8%！⚠️ 強烈建議今年「全面暫停從股市提領」，改用您預備的 2~3 年現金緩衝墊生活，避免在谷底賤賣資產造成本金永久性耗損。',
-                                color: 'text-red-700',
-                                bg: 'bg-red-100',
-                                border: 'border-red-400',
-                                recommendedMonthly: 0 
-                            };
-                        } else {
-                            return { 
-                                state: 'danger', 
-                                title: '📉 觸發保本護欄 (建議減薪 10%)', 
-                                desc: '市場遭遇逆風，當前提領率已飆破 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', 
-                                color: 'text-red-600',
-                                bg: 'bg-red-50',
-                                border: 'border-red-200',
-                                recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) 
-                            };
-                        }
+                        return { 
+                            state: 'danger', 
+                            title: '📉 觸發保本護欄 (建議減薪 10%)', 
+                            desc: '市場遭遇逆風，當前提領率已飆破 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', 
+                            color: 'text-red-600',
+                            bg: 'bg-red-50',
+                            border: 'border-red-200',
+                            recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) 
+                        };
                     } else if (r < 0.032) {
                         return { 
                             state: 'success', 
@@ -1221,7 +1163,7 @@
                         let act = t.action || 'buy';
                         if (act === 'buy' || act === 'sync') { 
                             cashFlows.push({ date: new Date(t.date).getTime(), amount: -amt });
-                        } else if (act === 'sell' || act === 'dividend' || act === 'withdraw') {
+                        } else if (act === 'sell' || act === 'dividend') {
                             cashFlows.push({ date: new Date(t.date).getTime(), amount: amt });
                         }
                     }
@@ -1389,37 +1331,32 @@
                 <div class="text-right">
                     <div class="text-sm text-slate-500 flex items-center justify-end gap-1">
                         0050 最新市價
-                        <span x-show="priceUpdateTime" class="text-[11px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded ml-1 font-mono tracking-tight" x-text="priceUpdateTime.includes('失敗') ? priceUpdateTime : '時間 ' + priceUpdateTime" :class="{'text-red-500 bg-red-50 font-bold': priceUpdateTime.includes('失敗')}"></span>
                         <button @click="refreshPrice()" class="p-1 rounded transition text-slate-400 hover:text-blue-600 hover:bg-slate-200" title="更新即時股價">
                             <i class="fa-solid fa-arrows-rotate" :class="{'animate-spin text-blue-500': isFetchingPrice}"></i>
                         </button>
                     </div>
                     
-                    <div class="text-2xl font-black flex flex-wrap items-center justify-end gap-2 mt-1"
-                         :class="prevClose > 0 ? ((currentPrice - prevClose) > 0.001 ? 'text-red-500' : ((prevClose - currentPrice) > 0.001 ? 'text-green-500' : 'text-slate-800')) : 'text-slate-800'">
+                    <div class="text-2xl font-black text-slate-800 flex flex-wrap items-center justify-end gap-2 mt-1">
                         <span x-show="isFetching || isFetchingPrice" class="text-sm text-slate-400"><i class="fa-solid fa-rotate-right animate-spin"></i> 抓取中...</span>
-                        
-                        <!-- 🚀 顯示到小數點第二位，並根據標準券商邏輯變色 -->
-                        <span x-show="!isFetching && !isFetchingPrice" x-text="currentPrice > 0 ? Number(currentPrice).toFixed(2) : '無法取得'"></span>
+                        <span x-show="!isFetching && !isFetchingPrice" x-text="currentPrice > 0 ? currentPrice : '無法取得'"></span>
                         <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="text-base font-normal">元</span>
                         
-                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && prevClose > 0" class="text-sm font-bold ml-1 flex items-center">
-                            <!-- 平盤 (currentPrice == prevClose) 時隱藏箭頭 -->
-                            <i x-show="Math.abs(currentPrice - prevClose) > 0.001" class="fa-solid mr-1" :class="currentPrice > prevClose ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && prevClose > 0" class="text-sm font-bold ml-1 flex items-center" :class="currentPrice >= prevClose ? 'text-red-500' : 'text-green-500'">
+                            <i class="fa-solid mr-1" :class="currentPrice >= prevClose ? 'fa-caret-up' : 'fa-caret-down'"></i>
                             <span x-text="Math.abs(currentPrice - prevClose).toFixed(2)"></span>
                             <span class="text-xs ml-0.5" x-text="'(' + (((currentPrice - prevClose) / prevClose) * 100).toFixed(2) + '%)'"></span>
                         </span>
                         
-                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '🚀'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-red-600 font-bold bg-red-100 ml-1" title="短線爆漲 (高於月均價5%以上)">🚀 短線爆漲</span>
-                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '📉'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-green-600 font-bold bg-green-100 ml-1" title="短線超跌 (低於月均價5%以上)">📉 短線超跌</span>
-                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '⚖️'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 ml-1" title="貼近月線 (與月均價乖離5%以內)">⚖️ 貼近月線</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '🚀'" class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線爆漲 (高於月均價5%以上)">🚀 短線爆漲</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '📉'" class="text-green-600 font-bold bg-green-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線超跌 (低於月均價5%以上)">📉 短線超跌</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '⚖️'" class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="貼近月線 (與月均價乖離5%以內)">⚖️ 貼近月線</span>
                     </div>
                     
                     <div x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="flex flex-wrap items-center justify-end gap-1 mt-1.5">
                         <span class="text-slate-500 text-xs mr-0.5">量: <span x-text="formatMoney(currentVolume / 1000)"></span>張</span>
-                        <span x-show="volumeStatus === '🔥'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-orange-600 font-bold bg-orange-100" title="熱門爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
-                        <span x-show="volumeStatus === '🧊'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-blue-600 font-bold bg-blue-100" title="冷清量縮 (低於月均量0.6倍)">🧊 冷清量縮</span>
-                        <span x-show="volumeStatus === '正常'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100" title="溫和量能 (接近月均量)">🌊 溫和量能</span>
+                        <span x-show="volumeStatus === '🔥'" class="text-orange-600 font-bold bg-orange-100 px-1.5 py-0.5 rounded text-[10px]" title="熱門爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
+                        <span x-show="volumeStatus === '🧊'" class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px]" title="冷清量縮 (低於月均量0.6倍)">🧊 冷清量縮</span>
+                        <span x-show="volumeStatus === '正常'" class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px]" title="溫和量能 (接近月均量)">🌊 溫和量能</span>
                     </div>
                 </div>
             </div>
@@ -1668,15 +1605,15 @@
                                         <div class="font-bold mb-2 border-b pb-1 text-slate-800">價格乖離狀態圖示說明：</div>
                                         <ul class="space-y-2 mt-2">
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-red-600 font-bold bg-red-100 whitespace-nowrap mt-0.5">🚀 短線爆漲</span> 
+                                                <span class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🚀 短線爆漲</span> 
                                                 <span class="text-xs leading-relaxed">高於月均價 5% 以上。代表短線正乖離過大，情緒過熱，隨時可能發生技術性拉回。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-green-600 font-bold bg-green-100 whitespace-nowrap mt-0.5">📉 短線超跌</span> 
+                                                <span class="text-green-600 font-bold bg-green-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">📉 短線超跌</span> 
                                                 <span class="text-xs leading-relaxed">低於月均價 5% 以上。代表短線負乖離過大，過度恐慌，醞釀技術性反彈的機率極高。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">⚖️ 貼近月線</span> 
+                                                <span class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">⚖️ 貼近月線</span> 
                                                 <span class="text-xs leading-relaxed">與月均價乖離 5% 內。屬於健康的合理區間震盪，為一般常態 (中間值)。</span>
                                             </li>
                                         </ul>
@@ -1685,15 +1622,15 @@
                                         <div class="font-bold mb-2 border-b pb-1 text-slate-800">成交量能狀態圖示說明：</div>
                                         <ul class="space-y-2 mt-2">
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-orange-600 font-bold bg-orange-100 whitespace-nowrap mt-0.5">🔥 熱門爆量</span> 
+                                                <span class="text-orange-600 font-bold bg-orange-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🔥 熱門爆量</span> 
                                                 <span class="text-xs leading-relaxed">大於月均量 1.5 倍。籌碼換手熱烈，若在低檔爆量常為反轉訊號，高檔爆量則需警覺。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-blue-600 font-bold bg-blue-100 whitespace-nowrap mt-0.5">🧊 冷清量縮</span> 
+                                                <span class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🧊 冷清量縮</span> 
                                                 <span class="text-xs leading-relaxed">小於月均量 0.6 倍。市場觀望氣氛濃厚，買賣意願低迷，常出現於盤整期。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">🌊 溫和量能</span> 
+                                                <span class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🌊 溫和量能</span> 
                                                 <span class="text-xs leading-relaxed">介於 0.6 ~ 1.5 倍之間。接近月均量，為一般正常平穩的流動性狀態 (中間值)。</span>
                                             </li>
                                         </ul>
@@ -1885,10 +1822,10 @@
                                     <strong>當股市大漲時，給自己加薪 10% 享受生活；當股市暴跌時，共體時艱減薪 10%。</strong>清流君回測證實，即使在 2004 年金融海嘯前夕投入 0050，使用此機制依然能安全撐過 20 年以上！
                                 </p>
                                 <p class="text-sm mb-4 text-indigo-800 leading-relaxed">
-                                    <strong>沒有高配息怎麼辦？</strong> 0050 配息率約 2.5%~3.5%。不足的部分，您只需在領息後<strong>「賣出少許零股（或使用系統的『提領』功能）」</strong>即可。市值型 ETF 靠的是股價長期成長，賣零股換生活費是維持資產不竭的最佳做法。
+                                    <strong>沒有高配息怎麼辦？</strong> 0050 配息率約 2.5%~3.5%。不足的部分，您只需在領息後<strong>「賣出少許零股」</strong>即可。市值型 ETF 靠的是股價長期成長，賣零股換生活費是維持資產不竭的最佳做法。
                                 </p>
                                 <p class="text-sm text-indigo-800 leading-relaxed mb-5">
-                                    <strong>防禦機制 (極度重要)：</strong> 退休前請務必準備 <strong>2~3 年生活費的「現金緩衝墊」</strong>（放定存或高利活存）。當遇到像 2008 年級別的股災，帳面重挫且提領率飆高時，那兩年就<span class="text-red-500 font-bold">絕對不要賣股票</span>，改用這筆現金生活。
+                                    <strong>防禦機制 (極度重要)：</strong> 退休前請務必準備 <strong>2~3 年生活費的「現金緩衝墊」</strong>（放定存或高利活存）。當遇到像 2008 年級別的股災，帳面重挫時，那兩年就<span class="text-red-500 font-bold">絕對不要賣股票</span>，改用這筆現金生活。
                                 </p>
 
                                 <div class="p-4 bg-white rounded-xl border border-indigo-200 shadow-sm">
@@ -1921,11 +1858,6 @@
                                                 <span>當前提領率：<span x-text="marketValueNum > 0 ? (currentWithdrawalRate * 100).toFixed(2) + '%' : '0%'"></span></span>
                                                 <span>進度：<span x-text="fireProgress + '%'"></span></span>
                                             </div>
-
-                                            <div class="mt-3 p-2 bg-indigo-50/50 rounded border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between text-sm shadow-sm">
-                                                <span class="text-slate-600 font-bold mb-1 sm:mb-0"><i class="fa-solid fa-shopping-bag text-teal-500 mr-1"></i> 已累計成功提領：</span>
-                                                <span class="font-black text-teal-600 text-base" x-text="formatMoney(totalWithdrawn) + ' 元'"></span>
-                                            </div>
                                         </div>
                                     </div>
 
@@ -1936,13 +1868,13 @@
                                         <div class="text-sm text-slate-700 mb-4 leading-relaxed" x-text="gkStatus.desc"></div>
                                         
                                         <div class="border-t border-slate-200/50 pt-3 flex flex-col sm:flex-row sm:items-baseline gap-2">
-                                            <span class="text-sm text-slate-600 font-bold" x-text="gkStatus.state === 'accumulating' ? '此總市值目前安全月提領：' : '本月建議從股市提領金：'"></span>
+                                            <span class="text-sm text-slate-600 font-bold" x-text="gkStatus.state === 'accumulating' ? '此總市值目前安全月提領：' : '本月建議提領/扣款金：'"></span>
                                             <span class="text-3xl font-black" :class="gkStatus.color" x-text="formatMoney(gkStatus.recommendedMonthly) + ' 元'"></span>
                                         </div>
                                     </div>
                                     
                                     <div class="mt-4 pt-3 border-t border-indigo-100 text-xs text-slate-500 flex flex-col sm:flex-row justify-between gap-2">
-                                        <span>※ 實務操作：請在「系統設定 > 單筆加減碼」中使用「🛍️ 提領」選項來記錄您的花費，它等同於賣出並會精算年化報酬。</span>
+                                        <span>※ 實務操作：0050 會配息，因此您只需在每年初將 (預算差額) 賣出零股，放入銀行分批使用即可。</span>
                                     </div>
                                 </div>
                             </div>
@@ -2035,7 +1967,7 @@
 
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
                         <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加減碼 (不影響自動扣款設定)</h3>
-                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進、逢高減碼、<strong class="text-teal-600">提領生活費</strong>，或是<strong class="text-purple-600">輸入券商最終數據來校正誤差</strong>時，可直接在此輸入。</p>
+                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進、逢高減碼，或是<strong class="text-blue-600">想直接輸入券商最終數據來校正月底誤差</strong>時，可直接在此輸入。</p>
                         
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                             <div class="col-span-2 md:col-span-1">
@@ -2044,11 +1976,9 @@
                             </div>
                             <div class="col-span-2 md:col-span-1">
                                 <label class="block text-sm font-medium text-slate-600 mb-1">動作</label>
-                                <select x-model="manualAction" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold outline-none" 
-                                        :class="{'text-red-600 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-teal-600 bg-teal-50': manualAction === 'withdraw', 'text-amber-600 bg-amber-50': manualAction === 'dividend', 'text-purple-600 bg-purple-50': manualAction === 'sync'}">
+                                <select x-model="manualAction" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold" :class="{'text-red-500 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-amber-600 bg-amber-50': manualAction === 'dividend', 'text-purple-600 bg-purple-50': manualAction === 'sync'}">
                                     <option value="buy">買入</option>
                                     <option value="sell">賣出</option>
-                                    <option value="withdraw">🛍️ 提領</option>
                                     <option value="dividend">配息</option>
                                     <option value="sync">庫存校正</option>
                                 </select>
@@ -2089,11 +2019,9 @@
                                         <!-- Date -->
                                         <input type="date" x-model="txn.date" class="w-32 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
                                         <!-- Action -->
-                                        <select x-model="txn.action" class="w-24 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition font-bold outline-none" 
-                                                :class="{'text-red-600 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-teal-600 bg-teal-50': txn.action === 'withdraw', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
+                                        <select x-model="txn.action" class="w-24 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition font-bold" :class="{'text-red-500 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
                                             <option value="buy">買入</option>
                                             <option value="sell">賣出</option>
-                                            <option value="withdraw">🛍️ 提領</option>
                                             <option value="dividend">配息</option>
                                             <option value="sync">微調差額</option>
                                         </select>
@@ -2202,3 +2130,5 @@
     </script>
 </body>
 </html>
+
+
