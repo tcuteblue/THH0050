@@ -2140,44 +2140,53 @@
                             系統的自動定期定額與單筆紀錄都會顯示在此。填寫「單價」與「股數」會自動算出總金額，您也可以點擊總金額欄位來微調手續費誤差。這些完整紀錄是計算精確「年化複利報酬率 (XIRR)」的核心資料。
                         </p>
                         
-                        <div id="txnList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div id="txnList" class="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             <template x-for="(txn, index) in transactions" :key="txn.id">
-                                <!-- 手機排版大翻新：利用 flex-col 與精確的空間分配，確保不會被遮擋 -->
+                                <!-- 歷史明細列 (加入了明確的小標題) -->
                                 <div class="flex flex-col sm:flex-row gap-3 bg-white p-3 rounded-lg border border-slate-200 shadow-sm w-full transition-all hover:border-blue-300">
                                     
-                                    <!-- 左側/上半部：日期與動作 (佔 50% 確保下拉選單不被切掉) -->
+                                    <!-- 左側/上半部：日期與動作 -->
                                     <div class="flex w-full sm:w-auto gap-2">
-                                        <input type="date" x-model="txn.date" class="w-1/2 sm:w-[130px] px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                        <div class="w-1/2 sm:w-[130px]">
+                                            <label class="text-[11px] text-slate-500 font-bold block mb-1">日期</label>
+                                            <input type="date" x-model="txn.date" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                        </div>
                                         
-                                        <select x-model="txn.action" @change="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" class="w-1/2 sm:w-[125px] px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition font-bold outline-none" 
-                                                :class="{'text-red-600 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-teal-600 bg-teal-50': txn.action === 'withdraw', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
-                                            <option value="buy">📥 買入</option>
-                                            <option value="sell">➖ 賣出</option>
-                                            <option value="withdraw">🛍️ 提領</option>
-                                            <option value="dividend">💰 配息</option>
-                                            <option value="sync">🔧 微調</option>
-                                        </select>
+                                        <div class="w-1/2 sm:w-[125px]">
+                                            <label class="text-[11px] text-slate-500 font-bold block mb-1">動作</label>
+                                            <select x-model="txn.action" @change="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition font-bold outline-none" 
+                                                    :class="{'text-red-600 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-teal-600 bg-teal-50': txn.action === 'withdraw', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
+                                                <option value="buy">📥 買入</option>
+                                                <option value="sell">➖ 賣出</option>
+                                                <option value="withdraw">🛍️ 提領</option>
+                                                <option value="dividend">💰 配息</option>
+                                                <option value="sync">🔧 微調</option>
+                                            </select>
+                                        </div>
                                     </div>
 
                                     <!-- 右側/下半部：價、量、總額與刪除按鈕 -->
-                                    <div class="flex flex-1 w-full gap-2 items-center">
+                                    <div class="flex flex-1 w-full gap-2 items-end">
                                         <!-- 單價 -->
                                         <div class="flex-1 relative" x-show="txn.action !== 'dividend' && txn.action !== 'sync'">
-                                            <input type="number" step="0.01" x-model.number="txn.price" @input="txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="單價" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                            <label class="text-[11px] text-slate-500 font-bold block mb-1">單價 (元)</label>
+                                            <input type="number" step="0.01" x-model.number="txn.price" @input="txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="0.00" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
                                         </div>
                                         
                                         <!-- 股數 -->
                                         <div class="flex-1 relative" x-show="txn.action !== 'dividend'">
-                                            <input type="number" step="1" x-model.number="txn.shares" @input="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="股數" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                            <label class="text-[11px] text-slate-500 font-bold block mb-1" x-text="txn.action === 'sync' ? '微調差額(股)' : '股數'">股數</label>
+                                            <input type="number" step="1" x-model.number="txn.shares" @input="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="0" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
                                         </div>
                                         
                                         <!-- 總金額 -->
                                         <div class="flex-1 relative">
-                                            <input type="number" step="1" x-model.number="txn.amount" placeholder="總額" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                            <label class="text-[11px] text-slate-500 font-bold block mb-1" x-text="txn.action === 'dividend' ? '配息總額 (元)' : (txn.action === 'sync' ? '微調差額 (元)' : '總額 (元)')">總額</label>
+                                            <input type="number" step="1" x-model.number="txn.amount" placeholder="0" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
                                         </div>
 
                                         <!-- 刪除按鈕 -->
-                                        <button @click="confirmRemoveTransaction(txn.id)" class="flex-shrink-0 px-2 py-2 text-slate-300 hover:text-red-500 transition" title="刪除此紀錄">
+                                        <button @click="confirmRemoveTransaction(txn.id)" class="flex-shrink-0 px-2 py-2 mb-0.5 text-slate-300 hover:text-red-500 transition" title="刪除此紀錄">
                                             <i class="fa-solid fa-trash-can"></i>
                                         </button>
                                     </div>
