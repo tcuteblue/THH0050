@@ -103,6 +103,7 @@
                 isFetching: false,
                 isFetchingPrice: false,
                 realTimeFetched: false,
+                priceUpdateTime: '',   
                 historicalDataLoaded: false,
                 calc_k: 0,
                 calc_ma20: 0,
@@ -613,17 +614,48 @@
                 },
 
                 async fetchRealTimePrice() {
-                    const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&_t=${Date.now()}`;
+                    // 加入 range=1d&interval=1m 強制抓取當日分鐘K，並加入隨機亂數強制穿透 Proxy 快取
+                    const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/0050.TW?region=TW&lang=zh-Hant-TW&range=1d&interval=1m&_r=${Math.random()}&_t=${Date.now()}`;
                     const data = await this._fetchWithProxy(yfUrl);
                     if (data && data.chart && data.chart.result && data.chart.result[0]) {
-                        const meta = data.chart.result[0].meta;
-                        if (meta && meta.regularMarketPrice) {
-                            this.currentPrice = meta.regularMarketPrice;
-                            if (meta.regularMarketVolume) {
+                        const result = data.chart.result[0];
+                        const meta = result.meta;
+                        
+                        let latestPrice = meta?.regularMarketPrice;
+                        let latestTime = meta?.regularMarketTime;
+
+                        // 從最新的一根 K 棒中提取價格，避免 meta 延遲
+                        if (result.indicators && result.indicators.quote && result.indicators.quote[0].close) {
+                            const closes = result.indicators.quote[0].close;
+                            const timestamps = result.timestamp;
+                            for (let i = closes.length - 1; i >= 0; i--) {
+                                if (closes[i] !== null && closes[i] !== undefined) {
+                                    latestPrice = closes[i];
+                                    latestTime = timestamps[i];
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (latestPrice) {
+                            this.currentPrice = latestPrice;
+                            if (meta && meta.regularMarketVolume) {
                                 this.currentVolume = meta.regularMarketVolume;
+                            }
+                            if (latestTime) {
+                                const date = new Date(latestTime * 1000);
+                                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                                const dd = String(date.getDate()).padStart(2, '0');
+                                const hh = String(date.getHours()).padStart(2, '0');
+                                const min = String(date.getMinutes()).padStart(2, '0');
+                                this.priceUpdateTime = `${mm}/${dd} ${hh}:${min}`;
                             }
                             this.realTimeFetched = true;
                         }
+                    } else {
+                        // 如果即時 API 失敗，退回顯示歷史資料最後一天(昨日收盤)時提示使用者
+                        this.priceUpdateTime = '即時連線失敗(顯示昨收)';
+                        this.realTimeFetched = false;
                     }
                 },
 
@@ -1331,6 +1363,7 @@
                 <div class="text-right">
                     <div class="text-sm text-slate-500 flex items-center justify-end gap-1">
                         0050 最新市價
+                        <span x-show="priceUpdateTime" class="text-[11px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded ml-1 font-mono tracking-tight" x-text="priceUpdateTime.includes('失敗') ? priceUpdateTime : '時間 ' + priceUpdateTime" :class="{'text-red-500 bg-red-50 font-bold': priceUpdateTime.includes('失敗')}"></span>
                         <button @click="refreshPrice()" class="p-1 rounded transition text-slate-400 hover:text-blue-600 hover:bg-slate-200" title="更新即時股價">
                             <i class="fa-solid fa-arrows-rotate" :class="{'animate-spin text-blue-500': isFetchingPrice}"></i>
                         </button>
@@ -2130,5 +2163,3 @@
     </script>
 </body>
 </html>
-
-
