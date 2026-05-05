@@ -1415,9 +1415,10 @@
         <header class="sticky top-0 z-40 bg-background/90 backdrop-blur-md pt-6 pb-2 mb-6 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-slate-200/50">
             <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-4">
                 <div>
+                    <!-- 已經移除 (動態提領升級版) 這幾個字 -->
                     <h1 class="text-2xl sm:text-3xl font-black text-primary flex flex-wrap items-baseline gap-2">
                         <span><i class="fa-solid fa-layer-group"></i> 0050 投資建議</span>
-                        <span class="text-xs sm:text-sm font-normal text-slate-400">蔡宏和製作 (動態提領升級版)</span>
+                        <span class="text-xs sm:text-sm font-normal text-slate-400">蔡宏和製作</span>
                     </h1>
                     <p class="text-sm text-slate-500 mt-1">深度市場洞察與自動化記帳系統</p>
                 </div>
@@ -1712,15 +1713,15 @@
                                         <div class="font-bold mb-2 border-b pb-1 text-slate-800">價格乖離狀態圖示說明：</div>
                                         <ul class="space-y-2 mt-2">
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-red-600 font-bold bg-red-100 whitespace-nowrap mt-0.5">🚀 短線爆漲</span> 
+                                                <span class="inline-flex items-center justify-center h-[26px] px-2 rounded text-[13px] text-red-600 font-bold bg-red-100 whitespace-nowrap mt-0.5">🚀 短線爆漲</span> 
                                                 <span class="text-xs leading-relaxed">高於月均價 5% 以上。代表短線正乖離過大，情緒過熱，隨時可能發生技術性拉回。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-green-600 font-bold bg-green-100 whitespace-nowrap mt-0.5">📉 短線超跌</span> 
+                                                <span class="inline-flex items-center justify-center h-[26px] px-2 rounded text-[13px] text-green-600 font-bold bg-green-100 whitespace-nowrap mt-0.5">📉 短線超跌</span> 
                                                 <span class="text-xs leading-relaxed">低於月均價 5% 以上。代表短線負乖離過大，過度恐慌，醞釀技術性反彈的機率極高。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">⚖️ 貼近月線</span> 
+                                                <span class="inline-flex items-center justify-center h-[26px] px-2 rounded text-[13px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">⚖️ 貼近月線</span> 
                                                 <span class="text-xs leading-relaxed">與月均價乖離 5% 內。屬於健康的合理區間震盪，為一般常態 (中間值)。</span>
                                             </li>
                                         </ul>
@@ -1729,15 +1730,15 @@
                                         <div class="font-bold mb-2 border-b pb-1 text-slate-800">成交量能狀態圖示說明：</div>
                                         <ul class="space-y-2 mt-2">
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-orange-600 font-bold bg-orange-100 whitespace-nowrap mt-0.5">🔥 熱門爆量</span> 
+                                                <span class="inline-flex items-center justify-center h-[26px] px-2 rounded text-[13px] text-orange-600 font-bold bg-orange-100 whitespace-nowrap mt-0.5">🔥 熱門爆量</span> 
                                                 <span class="text-xs leading-relaxed">大於月均量 1.5 倍。籌碼換手熱烈，若在低檔爆量常為反轉訊號，高檔爆量則需警覺。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-blue-600 font-bold bg-blue-100 whitespace-nowrap mt-0.5">🧊 冷清量縮</span> 
+                                                <span class="inline-flex items-center justify-center h-[26px] px-2 rounded text-[13px] text-blue-600 font-bold bg-blue-100 whitespace-nowrap mt-0.5">🧊 冷清量縮</span> 
                                                 <span class="text-xs leading-relaxed">小於月均量 0.6 倍。市場觀望氣氛濃厚，買賣意願低迷，常出現於盤整期。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">🌊 溫和量能</span> 
+                                                <span class="inline-flex items-center justify-center h-[26px] px-2 rounded text-[13px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">🌊 溫和量能</span> 
                                                 <span class="text-xs leading-relaxed">介於 0.6 ~ 1.5 倍之間。接近月均量，為一般正常平穩的流動性狀態 (中間值)。</span>
                                             </li>
                                         </ul>
@@ -2141,49 +2142,42 @@
                         
                         <div id="txnList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             <template x-for="(txn, index) in transactions" :key="txn.id">
-                                <div class="flex flex-row items-start sm:items-center gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-blue-300">
-                                    <!-- 內容區塊 -->
-                                    <div class="flex-1 flex flex-col sm:flex-row sm:items-center gap-2 overflow-hidden">
-                                        <div class="flex items-center gap-2 w-full sm:w-auto">
-                                            <!-- Date -->
-                                            <input type="date" x-model="txn.date" class="w-32 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
-                                            <!-- Action -->
-                                            <select x-model="txn.action" @change="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" class="w-28 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition font-bold outline-none" 
-                                                    :class="{'text-red-600 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-teal-600 bg-teal-50': txn.action === 'withdraw', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
-                                                <option value="buy">📥 買入</option>
-                                                <option value="sell">➖ 賣出</option>
-                                                <option value="withdraw">🛍️ 提領</option>
-                                                <option value="dividend">💰 配息</option>
-                                                <option value="sync">🔧 微調差額</option>
-                                            </select>
-                                        </div>
-
-                                        <!-- Price, Shares & Amount -->
-                                        <div class="flex-1 flex items-center gap-2 mt-2 sm:mt-0 flex-wrap sm:flex-nowrap">
-                                            <!-- 股價 (單價) -->
-                                            <div class="flex items-center gap-1" x-show="txn.action !== 'dividend' && txn.action !== 'sync'">
-                                                <input type="number" step="0.01" x-model.number="txn.price" @input="txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="股價" class="w-20 sm:w-24 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
-                                                <span class="text-sm text-slate-500 whitespace-nowrap">元 ×</span>
-                                            </div>
-
-                                            <!-- 股數 -->
-                                            <div class="flex items-center gap-1" x-show="txn.action !== 'dividend'">
-                                                <input type="number" step="1" x-model.number="txn.shares" @input="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="股數" class="w-20 sm:w-24 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
-                                                <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action !== 'sync'">股 =</span>
-                                                <span class="text-sm text-slate-500 whitespace-nowrap" x-show="txn.action === 'sync'" x-cloak>股,</span>
-                                            </div>
-
-                                            <!-- 總金額 (解除唯讀，允許微調誤差) -->
-                                            <div class="flex items-center gap-1 w-full sm:w-auto mt-2 sm:mt-0">
-                                                <input type="number" step="1" x-model.number="txn.amount" placeholder="總金額" class="w-full sm:w-28 px-2 py-1 text-right text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
-                                                <span class="text-sm text-slate-500 whitespace-nowrap">元</span>
-                                            </div>
-                                        </div>
+                                <!-- 手機排版大翻新：利用 flex-col 與精確的空間分配，確保不會被遮擋 -->
+                                <div class="flex flex-col sm:flex-row gap-3 bg-white p-3 rounded-lg border border-slate-200 shadow-sm w-full transition-all hover:border-blue-300">
+                                    
+                                    <!-- 左側/上半部：日期與動作 (佔 50% 確保下拉選單不被切掉) -->
+                                    <div class="flex w-full sm:w-auto gap-2">
+                                        <input type="date" x-model="txn.date" class="w-1/2 sm:w-[130px] px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                        
+                                        <select x-model="txn.action" @change="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" class="w-1/2 sm:w-[125px] px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition font-bold outline-none" 
+                                                :class="{'text-red-600 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-teal-600 bg-teal-50': txn.action === 'withdraw', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
+                                            <option value="buy">📥 買入</option>
+                                            <option value="sell">➖ 賣出</option>
+                                            <option value="withdraw">🛍️ 提領</option>
+                                            <option value="dividend">💰 配息</option>
+                                            <option value="sync">🔧 微調</option>
+                                        </select>
                                     </div>
 
-                                    <!-- Delete 獨立區域 -->
-                                    <div class="flex-shrink-0 flex items-center justify-center pt-1 sm:pt-0">
-                                        <button @click="confirmRemoveTransaction(txn.id)" class="text-slate-300 hover:text-red-500 p-2 transition" title="刪除此紀錄">
+                                    <!-- 右側/下半部：價、量、總額與刪除按鈕 -->
+                                    <div class="flex flex-1 w-full gap-2 items-center">
+                                        <!-- 單價 -->
+                                        <div class="flex-1 relative" x-show="txn.action !== 'dividend' && txn.action !== 'sync'">
+                                            <input type="number" step="0.01" x-model.number="txn.price" @input="txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="單價" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                        </div>
+                                        
+                                        <!-- 股數 -->
+                                        <div class="flex-1 relative" x-show="txn.action !== 'dividend'">
+                                            <input type="number" step="1" x-model.number="txn.shares" @input="if(txn.action !== 'dividend' && txn.action !== 'sync') txn.amount = Math.floor((txn.price || 0) * (txn.shares || 0))" placeholder="股數" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                        </div>
+                                        
+                                        <!-- 總金額 -->
+                                        <div class="flex-1 relative">
+                                            <input type="number" step="1" x-model.number="txn.amount" placeholder="總額" class="w-full px-2 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary transition">
+                                        </div>
+
+                                        <!-- 刪除按鈕 -->
+                                        <button @click="confirmRemoveTransaction(txn.id)" class="flex-shrink-0 px-2 py-2 text-slate-300 hover:text-red-500 transition" title="刪除此紀錄">
                                             <i class="fa-solid fa-trash-can"></i>
                                         </button>
                                     </div>
