@@ -639,6 +639,13 @@
 
                         if (latestPrice) {
                             this.currentPrice = latestPrice;
+                            // 強制讀取官方的真正「昨收價」，解決歷史陣列在日夜間造成的錯位
+                            if (meta && meta.chartPreviousClose) {
+                                this.prevClose = meta.chartPreviousClose;
+                            } else if (meta && meta.previousClose) {
+                                this.prevClose = meta.previousClose;
+                            }
+                            
                             if (meta && meta.regularMarketVolume) {
                                 this.currentVolume = meta.regularMarketVolume;
                             }
@@ -862,8 +869,11 @@
                     uniqueChartData.sort((a, b) => a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
                     this.chartData = uniqueChartData;
 
+                    // 若即時報價失敗或沒有抓到昨收，才退回使用歷史陣列作為昨收基準
                     if (this.chartData.length >= 2) {
-                        this.prevClose = this.chartData[this.chartData.length - 2].close;
+                        if (!this.realTimeFetched || this.prevClose === 0) {
+                            this.prevClose = this.chartData[this.chartData.length - 2].close;
+                        }
                     }
 
                     let ma240Arr = [];
