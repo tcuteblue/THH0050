@@ -10,9 +10,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="0050 筆記">
     <link rel="apple-touch-icon" href="./icon.png">
-    
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%E7%AD%86%E8%A8%98%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
 
     <!-- Tailwind -->
     <script>
@@ -57,7 +54,6 @@
         <div class="max-w-5xl mx-auto px-4 py-3 sm:py-4">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <!-- 移除括號副標題，保持簡潔 -->
                     <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-800">蔡宏和製作</h1>
                     <div class="text-xs text-slate-500 mt-1 flex items-center gap-2">
                         <i class="fa-solid fa-clock"></i> 即時報價更新時間: <span x-text="priceUpdateTime"></span>
@@ -361,8 +357,7 @@
                                         </div>
                                     </div>
                                     
-                                    <!-- 右側獨立刪除按鈕 (防呆與防重疊) -->
-                                    <!-- ★修改點：加入防呆對話框呼叫 confirmRemoveTransaction -->
+                                    <!-- 右側獨立刪除按鈕 (呼叫防呆刪除機制) -->
                                     <button @click="confirmRemoveTransaction(txn.id)" class="shrink-0 w-[40px] h-[40px] ml-2 bg-red-50 text-red-500 rounded-lg border border-red-200 hover:bg-red-100 transition-colors flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-red-500" title="刪除此筆">
                                         <i class="fa-solid fa-trash-can text-[16px]"></i>
                                     </button>
@@ -444,14 +439,14 @@
             </div>
             <h3 class="text-lg font-bold text-slate-900 mb-2">系統通知</h3>
             <p class="text-slate-600 mb-6 whitespace-pre-line text-sm leading-relaxed" x-text="msgBoxText"></p>
-            <!-- ★修改點：將原先白底按鈕改為藍底白字，確保清晰可見 -->
-            <button @click="closeMsgBox()" class="w-full inline-flex justify-center rounded-xl px-4 py-3 bg-blue-600 text-base font-bold text-white shadow-sm hover:bg-blue-700 focus:outline-none transition-colors">
+            <!-- 確保確定按鈕擁有極高的可視度 (藍底白字) -->
+            <button @click="closeMsgBox()" class="w-full inline-flex justify-center rounded-xl px-4 py-3 bg-blue-600 text-base font-bold text-white shadow-md hover:bg-blue-700 focus:outline-none transition-colors">
                 確定
             </button>
         </div>
     </div>
 
-    <!-- ★新增點：Confirm Box Modal (防呆刪除確認機制) -->
+    <!-- Confirm Box Modal (防呆刪除確認機制) -->
     <div x-show="showConfirmBox" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" x-cloak>
         <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 transform transition-all text-center border border-slate-100">
             <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
@@ -463,8 +458,7 @@
                 <button @click="showConfirmBox = false" class="flex-1 rounded-xl px-4 py-3 bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors">
                     取消
                 </button>
-                <button @click="executeConfirmAction()" class="flex-1 rounded-xl px-4 py-3 bg-red-600 text-white font-bold shadow-sm hover:bg-red-700 transition-colors">
-                    確定刪除
+                <button @click="executeConfirmAction()" class="flex-1 rounded-xl px-4 py-3 bg-red-600 text-white font-bold shadow-md hover:bg-red-700 transition-colors" x-text="confirmActionType === 'clear' ? '確定清空' : '確定刪除'">
                 </button>
             </div>
         </div>
@@ -509,7 +503,6 @@
         </div>
     </div>
 
-    <!-- Alpine 腳本：保持原本清晰分明的排版格式 -->
     <script>
         document.addEventListener('alpine:init', () => {
             Alpine.data('investmentApp', () => ({
@@ -535,10 +528,11 @@
                 msgBoxText: '',
                 reloadOnClose: false,
 
-                // ★新增點：防呆確認框變數
+                // 完全修正的防呆確認機制變數 (絕不存放函數)
                 showConfirmBox: false,
                 confirmBoxText: '',
-                confirmActionCallback: null,
+                confirmTargetId: null,
+                confirmActionType: '', // 'delete' 或 'clear'
 
                 deferredPrompt: null,
                 showInstallBtn: false,
@@ -941,7 +935,6 @@
                         this.msgBoxText = `✅ 庫存校正已完成！\n系統已自動補足差額股數：${diffShares} 股\n自動微調成本差額：${diffAmount} 元`;
                         this.showMsgBox = true;
                     } else {
-                        // 包括 buy, sell, withdraw
                         if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0 || !this.manualDate) {
                             this.msgBoxText = '請輸入完整的交易日期、單價與股數！';
                             this.showMsgBox = true;
@@ -1026,35 +1019,35 @@
                     });
                 },
 
-                // ★新增點：防呆確認刪除
+                // 核心修復：使用 ID 字串來記錄，絕對不能在此處存放函數 () => {} 
                 confirmRemoveTransaction(id) {
                     this.confirmBoxText = '您確定要刪除這筆歷史明細嗎？\n刪除後無法復原，總資產與獲利將重新計算。';
-                    this.confirmActionCallback = () => {
-                        this.transactions = this.transactions.filter(t => t.id !== id);
-                        this.saveData();
-                    };
+                    this.confirmTargetId = id;
+                    this.confirmActionType = 'delete';
                     this.showConfirmBox = true;
                 },
 
-                // ★新增點：防呆清空明細
                 confirmClearTransactions() {
                     if (this.transactions.length === 0) return;
                     this.confirmBoxText = '⚠️ 警告！您確定要清空【所有歷史明細】嗎？\n此動作將刪除所有交易紀錄，強烈建議先匯出備份！';
-                    this.confirmActionCallback = () => {
+                    this.confirmTargetId = null;
+                    this.confirmActionType = 'clear';
+                    this.showConfirmBox = true;
+                },
+
+                executeConfirmAction() {
+                    if (this.confirmActionType === 'delete') {
+                        this.transactions = this.transactions.filter(t => t.id !== this.confirmTargetId);
+                        this.saveData();
+                    } else if (this.confirmActionType === 'clear') {
                         this.transactions = [];
                         this.saveData();
                         this.msgBoxText = '🗑️ 所有歷史明細紀錄已清空！';
                         this.showMsgBox = true;
-                    };
-                    this.showConfirmBox = true;
-                },
-
-                // ★新增點：執行防呆確認的動作
-                executeConfirmAction() {
-                    if (this.confirmActionCallback) {
-                        this.confirmActionCallback();
                     }
                     this.showConfirmBox = false;
+                    this.confirmTargetId = null;
+                    this.confirmActionType = '';
                 },
 
                 exportSystemBackup() {
@@ -1312,14 +1305,12 @@
                         this.processAutoDeduct(finalData);
                     }
 
-                    // 取得證交所淨值比
                     const pbData = await this._fetchSimpleJson('https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL');
                     if (pbData) {
                         const stock0050 = pbData.find(s => s.Code === '0050');
                         this.pbRatio = (stock0050 && stock0050.PBratio && stock0050.PBratio !== '-') ? parseFloat(stock0050.PBratio).toFixed(2) : '無資料';
                     } else this.pbRatio = 'API阻擋';
 
-                    // 取得融資餘額
                     const marginData = await this._fetchSimpleJson('https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN');
                     if (marginData) {
                         const marginAmountItem = marginData.find(item => item.CreditType === '融資金額(仟元)');
@@ -1328,7 +1319,6 @@
                         } else this.marginBalance = '無資料';
                     } else this.marginBalance = 'API阻擋';
 
-                    // 取得元大 ETF 折溢價
                     const yuantaApi = 'https://www.yuantaetfs.com/api/FundTrdInfo/GetNavPrice?fundid=1066';
                     const yuantaData = await this._fetchSimpleJson('https://corsproxy.io/?' + encodeURIComponent(yuantaApi));
                     if (yuantaData) {
@@ -1726,3 +1716,4 @@
     </script>
 </body>
 </html>
+
