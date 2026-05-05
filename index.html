@@ -1394,16 +1394,16 @@
                             <span class="text-xs ml-0.5" x-text="'(' + (((currentPrice - prevClose) / prevClose) * 100).toFixed(2) + '%)'"></span>
                         </span>
                         
-                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '🚀'" class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線爆漲 (高於月均價5%以上)">🚀 短線爆漲</span>
-                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '📉'" class="text-green-600 font-bold bg-green-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="短線超跌 (低於月均價5%以上)">📉 短線超跌</span>
-                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '⚖️'" class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] ml-1" title="貼近月線 (與月均價乖離5%以內)">⚖️ 貼近月線</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '🚀'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-red-600 font-bold bg-red-100 ml-1" title="短線爆漲 (高於月均價5%以上)">🚀 短線爆漲</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '📉'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-green-600 font-bold bg-green-100 ml-1" title="短線超跌 (低於月均價5%以上)">📉 短線超跌</span>
+                        <span x-show="!isFetching && !isFetchingPrice && currentPrice > 0 && priceStatus === '⚖️'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 ml-1" title="貼近月線 (與月均價乖離5%以內)">⚖️ 貼近月線</span>
                     </div>
                     
                     <div x-show="!isFetching && !isFetchingPrice && currentPrice > 0" class="flex flex-wrap items-center justify-end gap-1 mt-1.5">
                         <span class="text-slate-500 text-xs mr-0.5">量: <span x-text="formatMoney(currentVolume / 1000)"></span>張</span>
-                        <span x-show="volumeStatus === '🔥'" class="text-orange-600 font-bold bg-orange-100 px-1.5 py-0.5 rounded text-[10px]" title="熱門爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
-                        <span x-show="volumeStatus === '🧊'" class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px]" title="冷清量縮 (低於月均量0.6倍)">🧊 冷清量縮</span>
-                        <span x-show="volumeStatus === '正常'" class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px]" title="溫和量能 (接近月均量)">🌊 溫和量能</span>
+                        <span x-show="volumeStatus === '🔥'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-orange-600 font-bold bg-orange-100" title="熱門爆量 (高於月均量1.5倍)">🔥 熱門爆量</span>
+                        <span x-show="volumeStatus === '🧊'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-blue-600 font-bold bg-blue-100" title="冷清量縮 (低於月均量0.6倍)">🧊 冷清量縮</span>
+                        <span x-show="volumeStatus === '正常'" class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100" title="溫和量能 (接近月均量)">🌊 溫和量能</span>
                     </div>
                 </div>
             </div>
@@ -1652,15 +1652,15 @@
                                         <div class="font-bold mb-2 border-b pb-1 text-slate-800">價格乖離狀態圖示說明：</div>
                                         <ul class="space-y-2 mt-2">
                                             <li class="flex items-start gap-2">
-                                                <span class="text-red-600 font-bold bg-red-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🚀 短線爆漲</span> 
+                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-red-600 font-bold bg-red-100 whitespace-nowrap mt-0.5">🚀 短線爆漲</span> 
                                                 <span class="text-xs leading-relaxed">高於月均價 5% 以上。代表短線正乖離過大，情緒過熱，隨時可能發生技術性拉回。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="text-green-600 font-bold bg-green-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">📉 短線超跌</span> 
+                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-green-600 font-bold bg-green-100 whitespace-nowrap mt-0.5">📉 短線超跌</span> 
                                                 <span class="text-xs leading-relaxed">低於月均價 5% 以上。代表短線負乖離過大，過度恐慌，醞釀技術性反彈的機率極高。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">⚖️ 貼近月線</span> 
+                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">⚖️ 貼近月線</span> 
                                                 <span class="text-xs leading-relaxed">與月均價乖離 5% 內。屬於健康的合理區間震盪，為一般常態 (中間值)。</span>
                                             </li>
                                         </ul>
@@ -1669,15 +1669,15 @@
                                         <div class="font-bold mb-2 border-b pb-1 text-slate-800">成交量能狀態圖示說明：</div>
                                         <ul class="space-y-2 mt-2">
                                             <li class="flex items-start gap-2">
-                                                <span class="text-orange-600 font-bold bg-orange-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🔥 熱門爆量</span> 
+                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-orange-600 font-bold bg-orange-100 whitespace-nowrap mt-0.5">🔥 熱門爆量</span> 
                                                 <span class="text-xs leading-relaxed">大於月均量 1.5 倍。籌碼換手熱烈，若在低檔爆量常為反轉訊號，高檔爆量則需警覺。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="text-blue-600 font-bold bg-blue-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🧊 冷清量縮</span> 
+                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-blue-600 font-bold bg-blue-100 whitespace-nowrap mt-0.5">🧊 冷清量縮</span> 
                                                 <span class="text-xs leading-relaxed">小於月均量 0.6 倍。市場觀望氣氛濃厚，買賣意願低迷，常出現於盤整期。</span>
                                             </li>
                                             <li class="flex items-start gap-2">
-                                                <span class="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap mt-0.5">🌊 溫和量能</span> 
+                                                <span class="inline-flex items-center justify-center h-[22px] px-1.5 rounded text-[12px] text-slate-600 font-bold bg-slate-100 whitespace-nowrap mt-0.5">🌊 溫和量能</span> 
                                                 <span class="text-xs leading-relaxed">介於 0.6 ~ 1.5 倍之間。接近月均量，為一般正常平穩的流動性狀態 (中間值)。</span>
                                             </li>
                                         </ul>
