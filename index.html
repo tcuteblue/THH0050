@@ -435,6 +435,7 @@
                         this.msgBoxText = `✅ 庫存校正已完成！\n系統已自動補足差額股數：${diffShares} 股\n自動微調成本差額：${diffAmount} 元`;
                         this.showMsgBox = true;
                     } else {
+                        // 包括 buy, sell, withdraw
                         if (!this.manualShares || this.manualShares <= 0 || !this.manualPrice || this.manualPrice <= 0 || !this.manualDate) {
                             this.msgBoxText = '請輸入完整的交易日期、股數與成交單價！';
                             this.showMsgBox = true;
@@ -1059,7 +1060,7 @@
                             const totalCost = shares * avgCost + amt;
                             shares += s;
                             avgCost = shares > 0 ? totalCost / shares : 0;
-                        } else if (act === 'sell') {
+                        } else if (act === 'sell' || act === 'withdraw') {
                             shares = Math.max(0, shares - s);
                         }
                     }
@@ -1075,7 +1076,10 @@
                            this.transactions.filter(t => t.action === 'buy' || t.action === 'sync').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
                 },
                 get totalCashIn() {
-                    return this.transactions.filter(t => t.action === 'sell' || t.action === 'dividend').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                    return this.transactions.filter(t => t.action === 'sell' || t.action === 'dividend' || t.action === 'withdraw').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+                },
+                get totalWithdrawn() {
+                    return this.transactions.filter(t => t.action === 'withdraw').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
                 },
 
                 get currentScore() {
@@ -1158,15 +1162,27 @@
                     }
 
                     if (r > 0.048) {
-                        return { 
-                            state: 'danger', 
-                            title: '📉 觸發保本護欄 (建議減薪 10%)', 
-                            desc: '市場遭遇逆風，當前提領率已飆破 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', 
-                            color: 'text-red-600',
-                            bg: 'bg-red-50',
-                            border: 'border-red-200',
-                            recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) 
-                        };
+                        if (this.cond_ma240) {
+                            return {
+                                state: 'danger-bear',
+                                title: '🚨 熊市警報！觸發保本護欄',
+                                desc: '市場跌破長期年線且當前提領率已飆破 4.8%！⚠️ 強烈建議今年「全面暫停從股市提領」，改用您預備的 2~3 年現金緩衝墊生活，避免在谷底賤賣資產造成本金永久性耗損。',
+                                color: 'text-red-700',
+                                bg: 'bg-red-100',
+                                border: 'border-red-400',
+                                recommendedMonthly: 0 
+                            };
+                        } else {
+                            return { 
+                                state: 'danger', 
+                                title: '📉 觸發保本護欄 (建議減薪 10%)', 
+                                desc: '市場遭遇逆風，當前提領率已飆破 4.8% 的危險上限！建議您今年「共體時艱」，將預算下調 10%，以保護本金避免提早耗盡。', 
+                                color: 'text-red-600',
+                                bg: 'bg-red-50',
+                                border: 'border-red-200',
+                                recommendedMonthly: (this.targetMonthlyExpense * 0.9).toFixed(0) 
+                            };
+                        }
                     } else if (r < 0.032) {
                         return { 
                             state: 'success', 
@@ -1205,7 +1221,7 @@
                         let act = t.action || 'buy';
                         if (act === 'buy' || act === 'sync') { 
                             cashFlows.push({ date: new Date(t.date).getTime(), amount: -amt });
-                        } else if (act === 'sell' || act === 'dividend') {
+                        } else if (act === 'sell' || act === 'dividend' || act === 'withdraw') {
                             cashFlows.push({ date: new Date(t.date).getTime(), amount: amt });
                         }
                     }
@@ -1869,10 +1885,10 @@
                                     <strong>當股市大漲時，給自己加薪 10% 享受生活；當股市暴跌時，共體時艱減薪 10%。</strong>清流君回測證實，即使在 2004 年金融海嘯前夕投入 0050，使用此機制依然能安全撐過 20 年以上！
                                 </p>
                                 <p class="text-sm mb-4 text-indigo-800 leading-relaxed">
-                                    <strong>沒有高配息怎麼辦？</strong> 0050 配息率約 2.5%~3.5%。不足的部分，您只需在領息後<strong>「賣出少許零股」</strong>即可。市值型 ETF 靠的是股價長期成長，賣零股換生活費是維持資產不竭的最佳做法。
+                                    <strong>沒有高配息怎麼辦？</strong> 0050 配息率約 2.5%~3.5%。不足的部分，您只需在領息後<strong>「賣出少許零股（或使用系統的『提領』功能）」</strong>即可。市值型 ETF 靠的是股價長期成長，賣零股換生活費是維持資產不竭的最佳做法。
                                 </p>
                                 <p class="text-sm text-indigo-800 leading-relaxed mb-5">
-                                    <strong>防禦機制 (極度重要)：</strong> 退休前請務必準備 <strong>2~3 年生活費的「現金緩衝墊」</strong>（放定存或高利活存）。當遇到像 2008 年級別的股災，帳面重挫時，那兩年就<span class="text-red-500 font-bold">絕對不要賣股票</span>，改用這筆現金生活。
+                                    <strong>防禦機制 (極度重要)：</strong> 退休前請務必準備 <strong>2~3 年生活費的「現金緩衝墊」</strong>（放定存或高利活存）。當遇到像 2008 年級別的股災，帳面重挫且提領率飆高時，那兩年就<span class="text-red-500 font-bold">絕對不要賣股票</span>，改用這筆現金生活。
                                 </p>
 
                                 <div class="p-4 bg-white rounded-xl border border-indigo-200 shadow-sm">
@@ -1905,6 +1921,11 @@
                                                 <span>當前提領率：<span x-text="marketValueNum > 0 ? (currentWithdrawalRate * 100).toFixed(2) + '%' : '0%'"></span></span>
                                                 <span>進度：<span x-text="fireProgress + '%'"></span></span>
                                             </div>
+
+                                            <div class="mt-3 p-2 bg-indigo-50/50 rounded border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between text-sm shadow-sm">
+                                                <span class="text-slate-600 font-bold mb-1 sm:mb-0"><i class="fa-solid fa-shopping-bag text-teal-500 mr-1"></i> 已累計成功提領：</span>
+                                                <span class="font-black text-teal-600 text-base" x-text="formatMoney(totalWithdrawn) + ' 元'"></span>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1915,13 +1936,13 @@
                                         <div class="text-sm text-slate-700 mb-4 leading-relaxed" x-text="gkStatus.desc"></div>
                                         
                                         <div class="border-t border-slate-200/50 pt-3 flex flex-col sm:flex-row sm:items-baseline gap-2">
-                                            <span class="text-sm text-slate-600 font-bold" x-text="gkStatus.state === 'accumulating' ? '此總市值目前安全月提領：' : '本月建議提領/扣款金：'"></span>
+                                            <span class="text-sm text-slate-600 font-bold" x-text="gkStatus.state === 'accumulating' ? '此總市值目前安全月提領：' : '本月建議從股市提領金：'"></span>
                                             <span class="text-3xl font-black" :class="gkStatus.color" x-text="formatMoney(gkStatus.recommendedMonthly) + ' 元'"></span>
                                         </div>
                                     </div>
                                     
                                     <div class="mt-4 pt-3 border-t border-indigo-100 text-xs text-slate-500 flex flex-col sm:flex-row justify-between gap-2">
-                                        <span>※ 實務操作：0050 會配息，因此您只需在每年初將 (預算差額) 賣出零股，放入銀行分批使用即可。</span>
+                                        <span>※ 實務操作：請在「系統設定 > 單筆加減碼」中使用「🛍️ 提領」選項來記錄您的花費，它等同於賣出並會精算年化報酬。</span>
                                     </div>
                                 </div>
                             </div>
@@ -2014,7 +2035,7 @@
 
                     <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
                         <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-cart-plus mr-2"></i>第三步：臨時單筆加減碼 (不影響自動扣款設定)</h3>
-                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進、逢高減碼，或是<strong class="text-blue-600">想直接輸入券商最終數據來校正月底誤差</strong>時，可直接在此輸入。</p>
+                        <p class="text-xs text-slate-500 mb-4">當您遇到大跌臨時想買進、逢高減碼、<strong class="text-teal-600">提領生活費</strong>，或是<strong class="text-purple-600">輸入券商最終數據來校正誤差</strong>時，可直接在此輸入。</p>
                         
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                             <div class="col-span-2 md:col-span-1">
@@ -2023,9 +2044,11 @@
                             </div>
                             <div class="col-span-2 md:col-span-1">
                                 <label class="block text-sm font-medium text-slate-600 mb-1">動作</label>
-                                <select x-model="manualAction" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold" :class="{'text-red-500 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-amber-600 bg-amber-50': manualAction === 'dividend', 'text-purple-600 bg-purple-50': manualAction === 'sync'}">
+                                <select x-model="manualAction" class="w-full px-2 py-2 text-sm sm:text-base border border-slate-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-secondary transition font-bold outline-none" 
+                                        :class="{'text-red-600 bg-red-50': manualAction === 'buy', 'text-green-600 bg-green-50': manualAction === 'sell', 'text-teal-600 bg-teal-50': manualAction === 'withdraw', 'text-amber-600 bg-amber-50': manualAction === 'dividend', 'text-purple-600 bg-purple-50': manualAction === 'sync'}">
                                     <option value="buy">買入</option>
                                     <option value="sell">賣出</option>
+                                    <option value="withdraw">🛍️ 提領</option>
                                     <option value="dividend">配息</option>
                                     <option value="sync">庫存校正</option>
                                 </select>
@@ -2066,9 +2089,11 @@
                                         <!-- Date -->
                                         <input type="date" x-model="txn.date" class="w-32 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition">
                                         <!-- Action -->
-                                        <select x-model="txn.action" class="w-24 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition font-bold" :class="{'text-red-500 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
+                                        <select x-model="txn.action" class="w-24 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-secondary transition font-bold outline-none" 
+                                                :class="{'text-red-600 bg-red-50': txn.action === 'buy', 'text-green-600 bg-green-50': txn.action === 'sell', 'text-teal-600 bg-teal-50': txn.action === 'withdraw', 'text-amber-600 bg-amber-50': txn.action === 'dividend', 'text-purple-600 bg-purple-50': txn.action === 'sync'}">
                                             <option value="buy">買入</option>
                                             <option value="sell">賣出</option>
+                                            <option value="withdraw">🛍️ 提領</option>
                                             <option value="dividend">配息</option>
                                             <option value="sync">微調差額</option>
                                         </select>
