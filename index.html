@@ -157,7 +157,7 @@
                     this.loadData();
                     if (!this.lastCheckDate) {
                         this.lastCheckDate = new Date().getTime();
-                        this.saveData();
+                        this.saveData(false);
                     }
                     
                     this.loadHistoricalCache();
@@ -318,7 +318,7 @@
                     }
                     this.manualShares = this.manualPrice = this.manualAmount = null;
                     this.manualAction = 'buy';
-                    this.saveData();
+                    this.saveData(true);
                     if (this.manualAction !== 'sync') this.showMsg('✅ 交易已存入歷史明細！\n年化報酬率已重新精算。');
                     this.downloadBackupFile();
                 },
@@ -350,7 +350,7 @@
                 executeConfirmAction() {
                     if (this.pendingDeleteType === 'single') this.transactions = this.transactions.filter(t => t.id !== this.pendingDeleteId);
                     else if (this.pendingDeleteType === 'all') { this.transactions = []; this.showMsg('🗑️ 所有歷史明細已清空！'); }
-                    this.saveData(); this.closeConfirmBox();
+                    this.saveData(true); this.closeConfirmBox();
                 },
                 closeConfirmBox() { this.showConfirmBox = false; this.pendingDeleteId = null; },
 
@@ -384,7 +384,7 @@
                     const today = new Date(), key = `${today.getFullYear()}-${today.getMonth()}`;
                     if (today.getDate() > Math.max(...days) && this.lastRemindedMonth !== key) this.showUpdateReminder = true;
                 },
-                dismissReminder() { this.lastRemindedMonth = `${new Date().getFullYear()}-${new Date().getMonth()}`; this.showUpdateReminder = false; this.saveData(); },
+                dismissReminder() { this.lastRemindedMonth = `${new Date().getFullYear()}-${new Date().getMonth()}`; this.showUpdateReminder = false; this.saveData(false); },
 
                 async refreshPrice() {
                     if (this.isFetchingPrice) return;
@@ -558,7 +558,7 @@
                         currDate.setDate(currDate.getDate() + 1);
                     }
                     if (logs.length > 0) { this.newLogs = logs; this.showLogs = true; this.downloadBackupFile(); }
-                    this.lastCheckDate = new Date().getTime(); this.saveData();
+                    this.lastCheckDate = new Date().getTime(); this.saveData(false);
                 },
 
                 get inventoryState() {
@@ -637,17 +637,18 @@
 
                 formatMoney(num) { return isNaN(num) || num == null ? '0' : Number(num).toLocaleString('zh-TW', { maximumFractionDigits: 0 }); },
 
-                saveData() {
+                saveData(showPrompt = true) {
                     localStorage.setItem('THH0050_Data_V3', JSON.stringify({
                         baseShares: this.baseShares, baseAvgCost: this.baseAvgCost, transactions: this.transactions, 
                         investmentPlans: this.investmentPlans, startDate: this.startDate, lastCheckDate: this.lastCheckDate,
                         lastRemindedMonth: this.lastRemindedMonth, isBlueLight: this.isBlueLight, isPanic: this.isPanic, targetMonthlyExpense: this.targetMonthlyExpense
                     }));
                     
-                    // 觸發自動儲存 UI 提示
-                    this.showAutoSave = true;
-                    if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer);
-                    this.autoSaveTimer = setTimeout(() => { this.showAutoSave = false; }, 1500);
+                    if (showPrompt) {
+                        this.showAutoSave = true;
+                        if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer);
+                        this.autoSaveTimer = setTimeout(() => { this.showAutoSave = false; }, 1500);
+                    }
                 },
 
                 loadData() {
@@ -1053,17 +1054,21 @@
                                 <div class="space-y-3">
                                     <template x-for="(plan, index) in investmentPlans" :key="plan.id">
                                         <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex items-center justify-between gap-2">
+                                            
+                                            <!-- 每月扣款排版優化：拆分成兩個小區塊，使「扣款 X 元」連在一起 -->
                                             <div class="flex flex-wrap items-center gap-y-2 gap-x-2">
-                                                <div class="flex items-center gap-2 whitespace-nowrap">
+                                                <div class="flex items-center gap-1 sm:gap-2 whitespace-nowrap">
                                                     <span class="text-sm text-slate-600">每月</span>
-                                                    <input type="number" min="1" max="31" step="1" x-model.number="plan.day" class="w-16 px-2 py-1 text-center border border-slate-300 rounded transition">
-                                                    <span class="text-sm text-slate-600">號，扣款</span>
+                                                    <input type="number" min="1" max="31" step="1" x-model.number="plan.day" class="w-14 sm:w-16 px-1 sm:px-2 py-1 text-center border border-slate-300 rounded transition">
+                                                    <span class="text-sm text-slate-600">號，</span>
                                                 </div>
-                                                <div class="flex items-center gap-2 whitespace-nowrap">
-                                                    <input type="number" min="0" step="1" x-model.number="plan.amount" class="w-28 px-2 py-1 text-right border border-slate-300 rounded transition">
+                                                <div class="flex items-center gap-1 sm:gap-2 whitespace-nowrap">
+                                                    <span class="text-sm text-slate-600">扣款</span>
+                                                    <input type="number" min="0" step="1" x-model.number="plan.amount" class="w-24 sm:w-28 px-1 sm:px-2 py-1 text-right border border-slate-300 rounded transition">
                                                     <span class="text-sm text-slate-600">元</span>
                                                 </div>
                                             </div>
+
                                             <button @click="removePlan(plan.id)" class="text-slate-400 hover:text-red-500 p-2"><i class="fa-solid fa-trash-can"></i></button>
                                         </div>
                                     </template>
@@ -1103,15 +1108,16 @@
                             <template x-for="(txn, index) in transactions" :key="txn.id">
                                 <div class="flex flex-col sm:flex-row gap-x-3 gap-y-2 bg-white p-3 rounded-lg border border-slate-200 shadow-sm w-full transition-all">
                                     
-                                    <!-- 日期與動作排版：確保日期能完整顯示 -->
+                                    <!-- 日期與動作排版：保證手機上「日期框」夠寬，能完整顯示到天數 -->
                                     <div class="flex w-full sm:w-auto gap-2">
-                                        <div class="flex-1 sm:w-[150px] min-w-[135px]">
+                                        <div class="flex-1 sm:w-[150px]">
                                             <label class="text-[11px] text-slate-500 font-bold block mb-1">日期</label>
-                                            <input type="date" x-model="txn.date" class="w-full px-1.5 py-2 text-sm border rounded-lg">
+                                            <input type="date" x-model="txn.date" class="w-full px-0.5 sm:px-1.5 py-2 text-[13px] sm:text-sm text-center border rounded-lg tracking-tighter sm:tracking-normal">
                                         </div>
-                                        <div class="w-[85px] sm:w-[100px] flex-shrink-0">
+                                        <!-- 縮減動作下拉選單的寬度，讓出空間給日期 -->
+                                        <div class="w-[72px] sm:w-[100px] flex-shrink-0">
                                             <label class="text-[11px] text-slate-500 font-bold block mb-1">動作</label>
-                                            <select x-model="txn.action" @change="if(txn.action!=='dividend'&&txn.action!=='sync') txn.amount=Math.round((txn.price||0)*(txn.shares||0))" class="w-full px-2 py-2 text-sm border rounded-lg font-bold" :class="{'text-red-600 bg-red-50':txn.action==='buy', 'text-green-600 bg-green-50':txn.action==='sell', 'text-teal-600 bg-teal-50':txn.action==='withdraw', 'text-amber-600 bg-amber-50':txn.action==='dividend', 'text-purple-600 bg-purple-50':txn.action==='sync'}">
+                                            <select x-model="txn.action" @change="if(txn.action!=='dividend'&&txn.action!=='sync') txn.amount=Math.round((txn.price||0)*(txn.shares||0))" class="w-full px-1 sm:px-2 py-2 text-[13px] sm:text-sm border rounded-lg font-bold" :class="{'text-red-600 bg-red-50':txn.action==='buy', 'text-green-600 bg-green-50':txn.action==='sell', 'text-teal-600 bg-teal-50':txn.action==='withdraw', 'text-amber-600 bg-amber-50':txn.action==='dividend', 'text-purple-600 bg-purple-50':txn.action==='sync'}">
                                                 <option value="buy">📥 買</option><option value="sell">➖ 賣</option><option value="withdraw">🛍️ 提</option><option value="dividend">💰 息</option><option value="sync">🔧 調</option>
                                             </select>
                                         </div>
@@ -1158,7 +1164,7 @@
                     </div>
 
                     <div class="text-center pt-4">
-                        <button @click="activeTab = 'dashboard'; window.scrollTo(0,0); window.location.reload();" class="px-8 py-3 bg-primary text-white font-bold rounded-xl shadow-md">儲存並重新運算</button>
+                        <button @click="activeTab = 'dashboard'; window.scrollTo(0,0); window.location.reload();" class="px-8 py-3 bg-primary text-white font-bold rounded-xl shadow-md">返回主控台</button>
                     </div>
                 </div>
             </div>
