@@ -1098,11 +1098,12 @@
                     </div>
 
                     <div class="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
-                        <h3 class="font-bold text-slate-700 mb-2 text-sm flex items-center justify-between">
-                            <span><i class="fa-solid fa-list-ul mr-2 text-blue-600"></i>第四步：歷史交易明細管理</span>
-                            <span class="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-md font-bold">進階精算</span>
+                        <h3 class="font-bold text-slate-700 mb-4 text-sm">
+                            <i class="fa-solid fa-list-ul mr-2 text-blue-600"></i>第四步：歷史交易明細管理
                         </h3>
-                        <p class="text-xs text-slate-500 mb-4 font-bold text-blue-700"><i class="fa-solid fa-lightbulb text-yellow-500"></i> 提示：此區塊的任何修改都會「即時自動儲存」並重新運算，無需尋找儲存按鈕！</p>
+                        <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+                            若想讓主控台精準算出您的「累積總損益」、「總報酬率」與「年化報酬率」，請在此處逐筆填寫您過往的詳細交易紀錄（包含買入、賣出與配息）。
+                        </p>
                         
                         <div id="txnList" class="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             <template x-for="(txn, index) in transactions" :key="txn.id">
