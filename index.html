@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>0050 投資建議</title>
     
+    <!-- 封印瀏覽器自動翻譯，防止文字被胡亂竄改成「領英」或「主機控台」 -->
+    <meta name="google" content="notranslate">
+    
     <meta name="theme-color" content="#ffffff">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1332,29 +1335,12 @@
     </div>
 
     <script>
+        // 在單一檔案 (Single-file) 環境下，多數現代瀏覽器因安全性考量，
+        // 已禁止透過 blob: 或 data: URI 註冊 Service Worker。
+        // 若要啟用完整的離線快取能力，請未來在伺服器上建立獨立的 sw.js 檔案並將其載入。
+        // 目前保留 head 中的 Manifest 即可支援大部份裝置的「加入主畫面/安裝」功能。
         if ('serviceWorker' in navigator) {
-            const swCode = `
-                const CACHE_NAME = 'etf-single-v1';
-                self.addEventListener('install', e => {
-                    self.skipWaiting();
-                });
-                self.addEventListener('activate', e => {
-                    self.clients.claim();
-                });
-                self.addEventListener('fetch', e => {
-                    // For pure single-file PWA, we just ensure network requests fall back to cache gracefully if needed,
-                    // but primarily we don't block API calls.
-                    if (e.request.url.includes('api') || e.request.url.includes('yahoo')) return;
-                    e.respondWith(
-                        fetch(e.request).catch(() => caches.match(e.request))
-                    );
-                });
-            `;
-            const blob = new Blob([swCode], {type: 'application/javascript'});
-            const swUrl = URL.createObjectURL(blob);
-            navigator.serviceWorker.register(swUrl)
-                .then(reg => console.log('PWA Service Worker successfully registered.'))
-                .catch(err => console.error('PWA SW Registration failed:', err));
+            console.log('單檔模式下略過 Service Worker Blob 註冊，改依賴 Manifest 進行 PWA 安裝。');
         }
     </script>
 </body>
