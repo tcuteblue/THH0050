@@ -11,8 +11,59 @@
     <meta name="apple-mobile-web-app-title" content="0050 投資建議">
     <link rel="apple-touch-icon" href="./icon.png">
     
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%220050%20%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22short_name%22%3A%220050%20%E6%8A%95%E8%B3%87%E5%BB%BA%E8%AD%B0%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%231e3a8a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%2C%7B%22src%22%3A%22.%2Ficon.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+    <script>
+        (function() {
+            /* 1. 動態計算絕對路徑 */
+            const currentUrl = window.location.href;
+            const baseUrl = currentUrl.split('?')[0].split('#')[0];
+            const absoluteIconUrl = new URL('./icon.png', baseUrl).href;
+            
+            /* 2. SVG 萬用備援圖示 (Base64) */
+            const svgIconBase64 = `data:image/svg+xml;base64,${btoa(`
+                <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="512" height="512" rx="120" fill="#1e3a8a"/>
+                    <path d="M120 380L220 280L300 330L400 180" stroke="white" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="400" cy="180" r="30" fill="#ef4444"/>
+                    <text x="50%" y="85%" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="bold" font-size="60">0050</text>
+                </svg>
+            `)}`;
+
+            /* 3. 動態 Manifest Blob 注入 */
+            const manifestData = {
+                "name": "0050 投資建議 APP",
+                "short_name": "0050 APP",
+                "start_url": baseUrl,
+                "display": "standalone",
+                "background_color": "#ffffff",
+                "theme_color": "#1e3a8a",
+                "icons": [
+                    { "src": absoluteIconUrl, "sizes": "192x192", "type": "image/png" },
+                    { "src": absoluteIconUrl, "sizes": "512x512", "type": "image/png" },
+                    { "src": svgIconBase64, "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+                ]
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/manifest+json' });
+            const manifestUrl = URL.createObjectURL(manifestBlob);
+            const link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = manifestUrl;
+            document.head.appendChild(link);
+
+            /* 4. 動態 Service Worker Blob 註冊 */
+            if ('serviceWorker' in navigator) {
+                const swContent = `
+                    self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
+                    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+                    self.addEventListener('fetch', e => { 
+                        // 基礎攔截，確保 PWA 安裝條件成立
+                        e.respondWith(fetch(e.request).catch(() => caches.match(e.request))); 
+                    });
+                `;
+                const swBlob = new Blob([swContent], { type: 'application/javascript' });
+                navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(err => console.log("SW Error", err));
+            }
+        })();
+    </script>
 
     <!-- Tailwind CSS -->
     <script>
@@ -100,11 +151,11 @@
                 // Manual Input
                 manualDate: new Date().toISOString().split('T')[0], manualAction: 'buy', manualShares: null, manualPrice: null, manualAmount: null,    
 
-                // Modals & UI
+                // Modals & UI (新增 showInstallBtn 狀態)
                 showMsgBox: false, msgBoxText: '', reloadOnClose: false,
                 showConfirmBox: false, confirmBoxText: '', pendingDeleteId: null, pendingDeleteType: '',
                 showInfoBox: false, infoBoxTitle: '', infoBoxContent: '', showSWRBox: false,
-                isIOS: false, isStandalone: false, showIOSInstallDialog: false, deferredPrompt: null,
+                isIOS: false, isStandalone: false, showIOSInstallDialog: false, deferredPrompt: null, showInstallBtn: false,
 
                 // CSV Import
                 showCSVModal: false, csvPreviewData: [],
@@ -123,7 +174,17 @@
                     this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
                     this.isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
-                    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); this.deferredPrompt = e; });
+                    // PWA 安裝事件綁定
+                    window.addEventListener('beforeinstallprompt', (e) => { 
+                        e.preventDefault(); 
+                        this.deferredPrompt = e; 
+                        this.showInstallBtn = true; 
+                    });
+                    window.addEventListener('appinstalled', () => { 
+                        this.showInstallBtn = false; 
+                        this.deferredPrompt = null; 
+                    });
+
                     window.addEventListener('scroll', () => { this.isScrolled = window.scrollY > 80; });
 
                     // 監聽全螢幕狀態來滾動到底部
@@ -678,7 +739,7 @@
                     if (this.deferredPrompt) {
                         this.deferredPrompt.prompt();
                         const { outcome } = await this.deferredPrompt.userChoice;
-                        if (outcome === 'accepted') this.deferredPrompt = null;
+                        if (outcome === 'accepted') { this.deferredPrompt = null; this.showInstallBtn = false; }
                     } else {
                         this.showMsg("目前無法觸發自動安裝 💡\n\n您可能已經安裝過此應用程式，或者請嘗試透過瀏覽器選單中的「加到主畫面」/「安裝應用程式」來手動安裝。");
                     }
@@ -691,6 +752,18 @@
 
     <div x-data="investmentApp" x-cloak class="max-w-4xl mx-auto px-4 sm:px-6 pt-6 relative">
         
+        <!-- PWA 頂部安裝橫幅 -->
+        <div x-show="showInstallBtn" x-transition class="bg-blue-600 text-white p-3 sm:px-6 flex flex-col sm:flex-row justify-between items-center shadow-md mb-6 rounded-2xl gap-3">
+            <div class="flex items-center gap-3 w-full sm:w-auto">
+                <i class="fa-solid fa-mobile-screen-button text-xl"></i>
+                <span class="text-sm font-bold flex-1">安裝 0050 APP，體驗更流暢的獨立視窗</span>
+            </div>
+            <div class="flex items-center justify-end gap-3 w-full sm:w-auto">
+                <button @click="installApp()" class="bg-white text-blue-600 px-4 py-1.5 rounded-lg font-black text-sm hover:bg-blue-50 transition w-full sm:w-auto">立即安裝</button>
+                <button @click="showInstallBtn = false" class="text-white/80 hover:text-white px-2"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+        </div>
+
         <!-- Messages & Modals -->
         <div x-show="showMsgBox" class="fixed inset-0 z-[160] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" x-transition x-cloak>
             <div class="glass-card rounded-3xl w-full max-w-sm p-6 text-center shadow-2xl transform transition-all scale-100">
@@ -1115,6 +1188,16 @@
                     </div>
                     
                     <div class="space-y-6">
+
+                        <!-- 在設定頁保留一個 PWA 安裝按鈕 -->
+                        <div x-show="showInstallBtn" class="bg-blue-50 p-5 rounded-xl border border-blue-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div>
+                                <h3 class="font-bold text-blue-800 text-sm"><i class="fa-solid fa-download mr-2"></i>安裝應用程式</h3>
+                                <p class="text-xs text-blue-600 mt-1">將此工具加入桌面，享有獨立視窗體驗。</p>
+                            </div>
+                            <button @click="installApp()" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow hover:bg-blue-700 transition w-full sm:w-auto">安裝 APP</button>
+                        </div>
+
                         <div class="bg-slate-50 p-5 rounded-xl border border-slate-100">
                             <h3 class="font-bold text-slate-700 mb-4 text-sm"><i class="fa-solid fa-box-open mr-2"></i> 第一步：輸入期初(或總結)庫存</h3>
                             <p class="text-xs text-slate-500 mb-4">若在第四步逐筆輸入明細，<span class="text-red-500 font-bold">請將此處設為 0</span>，避免重複計算！</p>
@@ -1255,24 +1338,7 @@
             </div>
 
         </div>
-
     </div>
-
-    <!-- PWA Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                const sw = `
-                    self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
-                    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-                    self.addEventListener('fetch', e => {});
-                `;
-                const blob = new Blob([sw], { type: 'application/javascript' });
-                navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => {
-                    console.log("Service Worker Registration Failed.");
-                });
-            });
-        }
-    </script>
 </body>
 </html>
+
