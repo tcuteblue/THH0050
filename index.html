@@ -865,6 +865,20 @@ this.showMsg("目前無法觸發自動安裝 💡\n\n您可能已經安裝過此
 <!-- 【分頁一：主控台】 -->
 <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0">
 
+<!-- 安裝 APP 區塊 (移至主控台最上方) -->
+<div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100 shadow-[0_4px_15px_rgb(0,0,0,0.02)] mb-6 flex flex-col sm:flex-row items-center justify-between gap-4" x-show="!isStandalone" x-cloak>
+  <div>
+    <h3 class="font-black text-blue-900 text-lg mb-1 flex items-center gap-2">
+      <div class="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm shadow-md"><i class="fa-solid fa-mobile-screen-button"></i></div> 
+      安裝至手機主畫面
+    </h3>
+    <p class="text-sm font-bold text-blue-700">將此工具加入手機桌面，享受全螢幕、免開啟瀏覽器的原生 APP 體驗！</p>
+  </div>
+  <button @click="installApp()" class="w-full sm:w-auto px-6 py-3.5 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all whitespace-nowrap">
+    一鍵安裝 APP
+  </button>
+</div>
+
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
 <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center transition-all hover:shadow-md hover:-translate-y-0.5">
 <div class="text-base sm:text-lg font-bold text-slate-500 mb-2">現有庫存 (股)</div>
@@ -1281,20 +1295,6 @@ this.showMsg("目前無法觸發自動安裝 💡\n\n您可能已經安裝過此
 
 <div class="space-y-8 relative z-10">
 
-<!-- 安裝 APP 區塊 -->
-<div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100 shadow-[0_4px_15px_rgb(0,0,0,0.02)] flex flex-col sm:flex-row items-center justify-between gap-4" x-show="!isStandalone" x-cloak>
-  <div>
-    <h3 class="font-black text-blue-900 text-lg mb-1 flex items-center gap-2">
-      <div class="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm shadow-md"><i class="fa-solid fa-mobile-screen-button"></i></div> 
-      安裝至手機主畫面
-    </h3>
-    <p class="text-sm font-bold text-blue-700">將此工具加入手機桌面，享受全螢幕、免開啟瀏覽器的原生 APP 體驗！</p>
-  </div>
-  <button @click="installApp()" class="w-full sm:w-auto px-6 py-3.5 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition-all whitespace-nowrap">
-    一鍵安裝 APP
-  </button>
-</div>
-
 <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-[0_4px_15px_rgb(0,0,0,0.02)]">
 <h3 class="font-black text-slate-800 mb-2 text-lg flex items-center gap-2">
 <span class="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-sm">1</span> 基礎庫存設定
@@ -1518,3 +1518,5 @@ this.showMsg("目前無法觸發自動安裝 💡\n\n您可能已經安裝過此
 
 </body>
 </html>
+
+
